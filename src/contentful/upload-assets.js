@@ -24,27 +24,47 @@ const delay = (dur = API_DELAY_DUR) =>
   new Promise(resolve => setTimeout(resolve, dur));
 
 const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
-  new Promise(complete => {
-    const queue = [].concat(assets);
-    const processing = new Set();
-    const done = [];
-    const failed = [];
+new Promise(async complete => {
+  const queue = [].concat(assets);
+  const processing = new Set();
+  const done = [];
+  const failed = [];
 
+  observer.next(
+    `Preparing to upload ${queue.length} assets to ${client.name}`
+  );
+
+  // Get all assets in the space
+  const existingAssets = await client.getAssets();
+  const existingAssetNames = new Set(
+    existingAssets.items.map(asset => asset.fields.file[CONTENTFUL_LOCALE].fileName)
+  );
+
+  const proglog = () => {
     observer.next(
-      `Preparing to upload ${queue.length} assets to ${client.name}`
+      `Remaining: ${queue.length} (${processing.size} uploading, ${
+        done.length
+      } done, ${failed.length} failed)`
     );
+  };
 
-    const proglog = () => {
-      observer.next(
-        `Remaining: ${queue.length} (${processing.size} uploading, ${
-          done.length
-        } done, ${failed.length} failed)`
-      );
-    };
+  const upload = asset => {
+    const identifier = asset.link;
+    const fileName = trimUrlToFilename(asset.link);
 
-    const upload = asset => {
-      const identifier = asset.link;
-      return (
+    // If the asset has already been uploaded, skip it
+    if (existingAssetNames.has(fileName)) {
+      observer.next(`Asset ${fileName} already exists, skipping upload`);
+      proglog();
+      // more in queue case
+      if (queue.length) upload(queue.shift());
+      // no more in queue, but at lesat one parallel
+      // process is in progress
+      else if (processing.size) return;
+      else complete({ done, failed });
+      return;
+    }
+    return (
         Promise.race([
           new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
           new Promise(async resolve => {

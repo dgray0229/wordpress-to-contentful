@@ -9,7 +9,7 @@ const {
   findByGlob
 } = require("../util");
 const OUTPUT_DATA_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
-const CF_USER_TYPE = "person";
+const CF_USER_TYPE = "author";
 
 const sanitizeName = s => s.toLowerCase().replace(/\ /gi, "");
 

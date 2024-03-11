@@ -4,7 +4,8 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "start": "node src"
+    "start": "node src",
+    "reset-cf": "./restart-contentful-env.sh"
   },
   "dependencies": {
     "contentful": "^7.4.1",

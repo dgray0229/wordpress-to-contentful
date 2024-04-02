@@ -41,7 +41,7 @@ const assets = async (url, observer = MOCK_OBSERVER) => {
   const queue = [...files].sort();
   let list = [];
   while (queue.length) {
-    const file = queue.shift();
+    const file = queue.pop();
     const post = await fs.readJson(path.join(POST_DIR_TRANSFORMED, file));
     const images = await listOfImagesByPost(post, url);
     list = list.concat(images);

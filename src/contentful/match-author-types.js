@@ -6,12 +6,12 @@ const {
   USER_DIR_ORIGINALS,
   USER_DIR_TRANSFORMED,
   CONTENTFUL_LOCALE,
-  findByGlob
+  findByGlob,
 } = require("../util");
 const OUTPUT_DATA_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
 const CF_USER_TYPE = "author";
 
-const sanitizeName = s => s.toLowerCase().replace(/\ /gi, "");
+const sanitizeName = (s) => s.toLowerCase().replace(/\ /gi, "");
 
 async function findUserInContentful(wpUser, cfUsers) {
   const found = cfUsers
@@ -21,16 +21,16 @@ async function findUserInContentful(wpUser, cfUsers) {
   return {
     wordpress: {
       id: wpUser.id,
-      name: wpUser.name
+      name: wpUser.name,
     },
-    contentful: found || null
+    contentful: found || null,
   };
 }
 
 function transformCfUser(cfUser) {
   return {
     id: cfUser.sys.id,
-    name: cfUser.fields.name[CONTENTFUL_LOCALE]
+    name: cfUser.fields.name[CONTENTFUL_LOCALE],
   };
 }
 
@@ -41,17 +41,17 @@ async function processSavedUsers(client, observer = MOCK_OBSERVER) {
   const output = [];
 
   while (queue.length) {
-    const file = queue.shift();
+    const file = queue.pop();
     const page = await fs.readJson(path.join(USER_DIR_ORIGINALS, file));
-    page.forEach(user => users.push(user));
+    page.forEach((user) => users.push(user));
   }
 
   const { items: cfUsers } = await client.getEntries({
-    content_type: CF_USER_TYPE
+    content_type: CF_USER_TYPE,
   });
 
   while (users.length) {
-    const user = users.shift();
+    const user = users.pop();
     const result = await findUserInContentful(user, cfUsers);
     output.push(result);
   }
@@ -61,8 +61,8 @@ async function processSavedUsers(client, observer = MOCK_OBSERVER) {
   return output;
 }
 
-module.exports = client =>
-  new Observable(observer =>
+module.exports = (client) =>
+  new Observable((observer) =>
     processSavedUsers(client, observer).then(() => observer.complete())
   );
 

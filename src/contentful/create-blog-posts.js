@@ -20,29 +20,17 @@ const PROCESSES = 8;
 const API_DELAY_DUR = 1000;
 const UPLOAD_TIMEOUT = 60000;
 
-const CONTENT_TYPE = "articlePage";
-const BLOG_LAYOUT = "2ny5cu75sVPNSFxcrqSBKu"; // test_blog_layout
-const RELATED_TOPICS = [
-  "eXXr1kU06jNXb6bnEDFWL", // Related: Organize Your Way to Tax Day: 5 Steps for Success
-  "2cVdJMe0UNnGj0w639HoKz", // Related: Top 7 Reasons to Switch to TaxAct
-  "23UVJl5HPZgo3OyV4qjGLc", // Related: Family Loans: Does the IRS Care If I Lend My Kids Money?
-  "5KeLjofZT76V9Qco1EztKn", // Related Topics - Topic Page Tax Planning
-  "2quMbyVQuqwmtOy7SXvD2k", // Related: When Does Capital Gains Tax Apply?
-  "tHMoJ0s4kAFtiRfSPlDmx", // Related: Know More About Tax Deductions and Credits
-];
 const DONE_FILE_PATH = path.join(ASSET_DIR_LIST, "done.json");
 const AUTHOR_FILE_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
 const RESULTS_PATH = path.join(POST_DIR_CREATED, "posts.json");
 
+const CONTENT_TYPE = "articlePage";
 const delay = (dur = API_DELAY_DUR) =>
   new Promise((resolve) => setTimeout(resolve, dur));
 
-const createBlogPosts = (posts, assets, authors, client, observer) => {
-  const [inlineMap, heroMap] = createMapsFromAssets(assets);
-  const authorMap = createMapFromAuthors(authors);
-
+const createBlogPosts = (posts, client, observer) => {
   return new Promise((complete) => {
-    const queue = [].concat(posts);
+    const queue = [].concat(posts).sort((a, b) => b - a);
     const processing = new Set();
     const done = [];
     const failed = [];
@@ -56,92 +44,8 @@ const createBlogPosts = (posts, assets, authors, client, observer) => {
         } done, ${failed.length} failed)`
       );
     };
-    const createPostReferences = (post) => {
-      return Promise.race([
-        new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
-        new Promise(async (resolve, reject) => {
-          try {
-            const richText = await createRichTextEntry(post);
-            const publishDate = await createPublishDateEntry(post);
-            const mainTitle = await createMainTitleEntry(post);
-            const summary = await createSummaryEntry(post);
 
-            if (!richText || !publishDate || !mainTitle) {
-              reject(new Error("One or more entries were not created"));
-              return;
-            }
-
-            observer.next("References created for", post.slug);
-            observer.next(
-              `Rich Text: ${richText.sys.id} Publish Date: ${
-                publishDate.sys.id
-              } Main Title: ${mainTitle.sys.id}`
-            );
-            resolve({ richText, publishDate, mainTitle, summary });
-          } catch (error) {
-            reject(error);
-          }
-        }),
-      ]);
-    };
-    const createRichTextEntry = (post) => {
-      return client.createEntry("richTextMarkdown", {
-        fields: {
-          title: {
-            [CONTENTFUL_LOCALE]: post.title,
-          },
-          text: {
-            [CONTENTFUL_LOCALE]: replaceInlineImageUrls(post.body, inlineMap),
-          },
-        },
-      });
-    };
-    const createPublishDateEntry = (post) => {
-      return client.createEntry("publishDate", {
-        fields: {
-          title: {
-            [CONTENTFUL_LOCALE]: post.title,
-          },
-          articlePublishDate: {
-            [CONTENTFUL_LOCALE]: post.publishDate,
-          },
-        },
-      });
-    };
-    const createMainTitleEntry = (post) => {
-      return client.createEntry("mainTitle", {
-        fields: {
-          title: {
-            [CONTENTFUL_LOCALE]: `Title: ${post.title}`,
-          },
-          id: {
-            [CONTENTFUL_LOCALE]: post.title,
-          },
-          text: {
-            [CONTENTFUL_LOCALE]: post.title,
-          },
-        },
-      });
-    };
-    const createSummaryEntry = (post) => {
-      return client.createEntry("summary", {
-        fields: {
-          title: {
-            [CONTENTFUL_LOCALE]: `Summary: ${post.title}`,
-          },
-          id: {
-            [CONTENTFUL_LOCALE]: post.title,
-          },
-          text: {
-            [CONTENTFUL_LOCALE]: post.title,
-          },
-          description: {
-            [CONTENTFUL_LOCALE]: post.description,
-          },
-        },
-      });
-    };
-    const createBlogPost = (post, references) => {
+    const createBlogPost = (post) => {
       const identifier = post.slug;
       processing.add(identifier);
       logProgress();
@@ -159,12 +63,12 @@ const createBlogPosts = (posts, assets, authors, client, observer) => {
             if (exists && exists.total > 0) {
               return reject({ error: "Post already exists", post: exists });
             }
-
             await delay();
-
+            const references = createPostReferences(post);
+            await delay();
             const created = await client.createEntry(
               CONTENT_TYPE,
-              transform(post, heroMap, authorMap, references)
+              transform(post, references)
             );
             await delay();
             const published = await created.publish();
@@ -174,7 +78,7 @@ const createBlogPosts = (posts, assets, authors, client, observer) => {
         ])
 
           // happy path
-          .then((published) => {
+          .then((_published) => {
             done.push(post);
           })
           // badness
@@ -188,9 +92,8 @@ const createBlogPosts = (posts, assets, authors, client, observer) => {
             logProgress();
             // more in queue case
             if (queue.length) {
-              const post = queue.shift();
-              const references = createPostReferences(post);
-              createBlogPost(post, references);
+              const post = queue.pop();
+              createBlogPost(post);
             }
             // no more in queue, but at lesat one parallel
             // process is in progress
@@ -203,9 +106,8 @@ const createBlogPosts = (posts, assets, authors, client, observer) => {
     // items than the amount of parallel processes
     let count = 0;
     while (queue.length && count < PROCESSES) {
-      const post = queue.shift();
-      const references = createPostReferences(post);
-      createBlogPost(post, references);
+      const post = queue.pop();
+      createBlogPost(post);
       count += 1;
     }
   });
@@ -213,156 +115,83 @@ const createBlogPosts = (posts, assets, authors, client, observer) => {
 
 async function transform(
   post,
-  heroMap,
-  authorMap,
-  { mainTitle, publishDate, richText, summary }
+  { mainTitle, publishDate, content, summary, titleImage: bannerImage, author }
 ) {
-  return {
-    fields: {
-      title: {
-        [CONTENTFUL_LOCALE]: post.title,
-      },
-      slug: {
-        [CONTENTFUL_LOCALE]: post.slug,
-      },
-      publishDate: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: publishDate,
-          },
+  const createdReferences = [
+    mainTitle,
+    publishDate,
+    content,
+    summary,
+    bannerImage,
+    author,
+  ];
+  const fields = {
+    title: {
+      [CONTENTFUL_LOCALE]: post.title,
+    },
+    slug: {
+      [CONTENTFUL_LOCALE]: post.slug,
+    },
+    layout: {
+      [CONTENTFUL_LOCALE]: {
+        sys: {
+          type: "Link",
+          linkType: "Entry",
+          id: BLOG_LAYOUT,
         },
       },
-      mainTitle: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: mainTitle,
-          },
+    },
+    relatedTopics: {
+      [CONTENTFUL_LOCALE]: {
+        sys: {
+          type: "Link",
+          linkType: "Entry",
+          id: RELATED_TOPICS[Math.floor(Math.random() * RELATED_TOPICS.length)],
         },
       },
-      content: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: richText, // You need to provide the content ID
-          },
+    },
+    relatedTopicsBottom: {
+      [CONTENTFUL_LOCALE]: {
+        sys: {
+          type: "Link",
+          linkType: "Entry",
+          id: RELATED_TOPICS[Math.floor(Math.random() * RELATED_TOPICS.length)],
         },
       },
-      layout: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: BLOG_LAYOUT,
-          },
+    },
+    ctaBottom: {
+      [CONTENTFUL_LOCALE]: {
+        sys: {
+          type: "Link",
+          linkType: "Entry",
+          id: CTA_BOTTOM,
         },
       },
-      bannerImage: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: heroMap.get(post.featured_media),
-          },
-        },
-      },
-      author: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: authorMap.has(post.author)
-              ? authorMap.get(post.author)
-              : CONTENTFUL_FALLBACK_USER_ID,
-          },
-        },
-      },
-      summary: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: summary,
-          },
-        },
-      },
-      relatedTopics: [
-        {
-          [CONTENTFUL_LOCALE]: {
-            sys: {
-              type: "Link",
-              linkType: "Entry",
-              id: "TaxAct",
-            },
-          },
-        },
-      ],
-      relatedTopicsBottom: [
-        {
-          [CONTENTFUL_LOCALE]: {
-            sys: {
-              type: "Link",
-              linkType: "Entry",
-              id: "TaxAct",
-            },
-          },
-        },
-      ],
-      ctaBottom: [
-        {
-          [CONTENTFUL_LOCALE]: {
-            sys: {
-              type: "Link",
-              linkType: "Entry",
-              id: "Start Your Return",
-            },
-          },
-        },
-      ],
     },
   };
-}
 
-function replaceInlineImageUrls(text, map) {
-  let replacedText = text;
-  map.forEach((newUrl, oldUrl) => {
-    replacedText = replacedText.replace(oldUrl, newUrl);
+  createdReferences.forEach((ref) => {
+    if (ref) {
+      fields[ref] = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: [ref]?.sys?.id,
+          },
+        },
+      };
+    }
   });
-  return replacedText;
-}
-
-function createMapsFromAssets(assets) {
-  const links = new Map();
-  const heros = new Map();
-  assets.forEach((asset) =>
-    links.set(asset.wordpress.link, asset.contentful.url)
-  );
-  assets.forEach(
-    (asset) =>
-      asset.wordpress.mediaNumber &&
-      heros.set(asset.wordpress.mediaNumber, asset.contentful.id)
-  );
-  return [links, heros];
-}
-
-function createMapFromAuthors(authors) {
-  const map = new Map();
-  authors.forEach((author) => {
-    if (author.contentful) map.set(author.wordpress.id, author.contentful.id);
-  });
-  return map;
+  return fields;
 }
 
 async function processBlogPosts(client, observer = MOCK_OBSERVER) {
   const files = await findByGlob("*.json", { cwd: POST_DIR_TRANSFORMED });
-  const queue = [...files].sort();
+  const queue = [...files].sort((a,b) => b - a);
   const posts = [];
   while (queue.length) {
-    const file = queue.shift();
+    const file = queue.pop();
     const post = await fs.readJson(path.join(POST_DIR_TRANSFORMED, file));
     posts.push(post);
   }
@@ -370,13 +199,7 @@ async function processBlogPosts(client, observer = MOCK_OBSERVER) {
   const assets = await fs.readJson(DONE_FILE_PATH);
   const authors = await fs.readJson(AUTHOR_FILE_PATH);
 
-  const result = await createBlogPosts(
-    posts,
-    assets,
-    authors,
-    client,
-    observer
-  );
+  const result = await createBlogPosts(posts, client, observer);
 
   await fs.ensureDir(POST_DIR_CREATED);
   await fs.writeJson(RESULTS_PATH, result, { spaces: 2 });

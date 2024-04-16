@@ -8,9 +8,9 @@
     "reset-cf": "./restart-contentful-env.sh"
   },
   "dependencies": {
-    "contentful": "^7.4.1",
+    "contentful": "^10.8.7",
     "contentful-cli": "^0.20.0",
-    "contentful-management": "^5.7.0",
+    "contentful-management": "^11.24.3",
     "dotenv": "^6.2.0",
     "execa": "^1.0.0",
     "fs-extra": "^7.0.1",

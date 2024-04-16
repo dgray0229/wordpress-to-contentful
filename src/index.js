@@ -15,51 +15,51 @@ const createAuthors = require("./contentful/create-authors");
 const createPostReferences = require("./contentful/create-post-references");
 
 const tasks = new Listr([
-  // {
-  //   title: "Setup & Pre-flight checks",
-  //   task: () => {
-  //     return new Listr([
-  //       {
-  //         title: "Check env config",
-  //         task: () => testConfig(),
-  //       },
-  //       {
-  //         title: "Clean destination folder",
-  //         task: () => cleanDist(),
-  //       },
-  //     ]);
-  //   },
-  // },
-  // {
-  //   title: "WordPress export: Users",
-  //   task: () => {
-  //     return new Listr([
-  //       {
-  //         title: "Download raw JSON",
-  //         task: () => downloadUsers(),
-  //       },
-  //     ]);
-  //   },
-  // },
-  // {
-  //   title: "WordPress export: Posts",
-  //   task: () => {
-  //     return new Listr([
-  //       {
-  //         title: "Download raw JSON",
-  //         task: () => downloadPosts(),
-  //       },
-  //       {
-  //         title: "Transform into Contentful format",
-  //         task: () => transformPosts(),
-  //       },
-  //       {
-  //         title: "Create list of assets",
-  //         task: () => createAssetList(),
-  //       },
-  //     ]);
-  //   },
-  // },
+  {
+    title: "Setup & Pre-flight checks",
+    task: () => {
+      return new Listr([
+        {
+          title: "Check env config",
+          task: () => testConfig(),
+        },
+        {
+          title: "Clean destination folder",
+          task: () => cleanDist(),
+        },
+      ]);
+    },
+  },
+  {
+    title: "WordPress export: Users",
+    task: () => {
+      return new Listr([
+        {
+          title: "Download raw JSON",
+          task: () => downloadUsers(),
+        },
+      ]);
+    },
+  },
+  {
+    title: "WordPress export: Posts",
+    task: () => {
+      return new Listr([
+        {
+          title: "Download raw JSON",
+          task: () => downloadPosts(),
+        },
+        {
+          title: "Transform into Contentful format",
+          task: () => transformPosts(),
+        },
+        {
+          title: "Create list of assets",
+          task: () => createAssetList(),
+        },
+      ]);
+    },
+  },
   {
     title: "Contentful import",
     task: () => {
@@ -68,14 +68,14 @@ const tasks = new Listr([
         //   title: "Create Content Management API Client",
         //   task: () => createClient()
         // },
-        // {
-        //   title: "Create Authors",
-        //   task: () => createClient().then(createAuthors),
-        // },
-        // {
-        //   title: "Upload assets",
-        //   task: () => createClient().then(uploadAssets),
-        // },
+        {
+          title: "Create Authors",
+          task: () => createClient().then(createAuthors),
+        },
+        {
+          title: "Upload assets",
+          task: () => createClient().then(uploadAssets),
+        },
         {
           title: "Create Post References",
           task: () => createClient().then(createPostReferences),

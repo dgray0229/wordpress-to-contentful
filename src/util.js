@@ -24,11 +24,11 @@ const {
   CONTENTFUL_SPACE_ID,
   CONTENTFUL_ENV_NAME,
   CONTENTFUL_LOCALE,
-  CONTENTFUL_FALLBACK_USER_ID
+  CONTENTFUL_FALLBACK_USER_ID,
 } = process.env;
 
 // Referencing contentful api entries that are used in the process
-// Create Blog Post 
+// Create Blog Post
 const CONTENT_TYPE = "articlePage"; // ID where posts will be added
 // pre-existing entries that are required by the content type but
 const BLOG_LAYOUT = "2ny5cu75sVPNSFxcrqSBKu"; // test_blog_layout
@@ -41,7 +41,7 @@ const RELATED_TOPICS = [
   "tHMoJ0s4kAFtiRfSPlDmx", // Related: Know More About Tax Deductions and Credits
 ];
 const CTA_BOTTOM = "2NWQl3OKWyJ6Zbc56AEdFJ"; // id: cta-bottom-articlePage; Title: Ready to get started on your taxes?
-
+const API_DELAY_DUR = 1000;
 
 // Awaitable globs
 const findByGlob = (pattern = "", opts = {}) =>
@@ -49,14 +49,17 @@ const findByGlob = (pattern = "", opts = {}) =>
     glob(pattern, opts, (err, files) => (err ? reject(err) : resolve(files)));
   });
 
+const delay = (dur = API_DELAY_DUR) =>
+  new Promise((resolve) => setTimeout(resolve, dur));
+
 const MIME_TYPES = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   png: "image/png",
-  gif: "image/gif"
+  gif: "image/gif",
 };
 
-const urlToMimeType = url => {
+const urlToMimeType = (url) => {
   const type = url
     .split(".")
     .slice(-1)
@@ -64,13 +67,13 @@ const urlToMimeType = url => {
   return MIME_TYPES[type] ? MIME_TYPES[type] : MIME_TYPES["jpg"];
 };
 
-const trimUrlToFilename = url =>
+const trimUrlToFilename = (url) =>
   url
     .split("/")
     .slice(-1)
     .join("");
 
-// exports 
+// exports
 module.exports = {
   MOCK_OBSERVER,
   BUILD_DIR,
@@ -96,5 +99,6 @@ module.exports = {
   CTA_BOTTOM,
   findByGlob,
   urlToMimeType,
-  trimUrlToFilename
+  trimUrlToFilename,
+  delay,
 };

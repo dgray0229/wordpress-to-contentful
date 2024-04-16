@@ -86,20 +86,6 @@ const createBlogPosts = (posts, client, observer) => {
             // TODO: retry failed
             failed.push({ post, error });
           })
-          // either
-          .finally(() => {
-            processing.delete(identifier);
-            logProgress();
-            // more in queue case
-            if (queue.length) {
-              const post = queue.pop();
-              createBlogPost(post);
-            }
-            // no more in queue, but at lesat one parallel
-            // process is in progress
-            else if (processing.size) return;
-            else complete({ done, failed });
-          })
       );
     };
     // safely handle cases where there are less total
@@ -110,6 +96,7 @@ const createBlogPosts = (posts, client, observer) => {
       createBlogPost(post);
       count += 1;
     }
+    return complete({ done, failed });
   });
 };
 
@@ -188,7 +175,7 @@ async function transform(
 
 async function processBlogPosts(client, observer = MOCK_OBSERVER) {
   const files = await findByGlob("*.json", { cwd: POST_DIR_TRANSFORMED });
-  const queue = [...files].sort((a,b) => b - a);
+  const queue = [...files].sort((a, b) => b - a);
   const posts = [];
   while (queue.length) {
     const file = queue.pop();

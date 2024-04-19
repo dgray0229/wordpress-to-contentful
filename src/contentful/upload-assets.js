@@ -29,18 +29,8 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
     const processing = new Set();
     const done = [];
     const failed = [];
-
-    observer.next(
-      `Preparing to upload ${queue.length} assets to ${client.name}`
-    );
-
-    // Get all assets in the space
-    const existingAssets = await client.getAssets();
-    const existingAssetNames = new Set(
-      existingAssets.items.map(
-        (asset) => asset.fields.file[CONTENTFUL_LOCALE].fileName
-      )
-    );
+    const existingImages = await getExistingImages(client);
+    const existingAssets = await getExistingAssets(client);
 
     const proglog = () => {
       observer.next(
@@ -52,18 +42,33 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
 
     const upload = (asset) => {
       const identifier = asset.link;
-      let image = null;
-      const assetExists = () => {
+      const handleContentfulImageEntry = async () => {
         const fileName = trimUrlToFilename(identifier);
-        const fileNameExists = existingAssetNames.has(fileName);
-        if (fileNameExists) {
-          observer.next(`Asset ${fileName} already exists, skipping upload`);
-          return true;
+        let publishedImage = null;
+        if (existingImages.has(fileName)) {
+          observer.next(
+            `Found existing image: ${fileName}. Skipping upload...`
+          );
+          publishedImage = existingImages.get(fileName);
+        } else {
+          publishedImage = await createImageEntry(client, asset);
         }
-        observer.next(
-          `Asset has not previously uploaded, continue uploading ${fileName}`
-        );
-        return false;
+        return publishedImage;
+      };
+      const handleContentfulAssetEntry = async (asset, publishedImage) => {
+        const title = asset.title;
+        let publishedAsset = null;
+        if (existingAssets.has(title)) {
+          observer.next(`Found existing asset: ${title}. Skipping upload...`);
+          publishedAsset = existingAssets.get(title);
+        } else {
+          publishedAsset = await createAssetEntry(
+            client,
+            asset,
+            publishedImage
+          );
+        }
+        return publishedAsset;
       };
 
       // If the asset has already been uploaded, skip it
@@ -73,30 +78,30 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
           new Promise(async (resolve) => {
             processing.add(identifier);
             proglog();
-            await delay();
-            const created = await client.createAsset(transformForUpload(asset));
-            await delay();
-            const processed = await created.processForAllLocales();
-            await delay();
-            const published = await processed.publish();
-            await delay();
-            resolve(published);
+            const publishedImage = await handleContentfulImageEntry();
+            resolve(publishedImage);
           }),
         ])
-          .then((published) => {
-            publishedImage = published;
-            return new Promise(async (resolve, _reject) => {
-              const assetEntry = await createAssetEntry(
-                client,
-                asset,
-                publishedImage
-              );
-              resolve(assetEntry);
-            });
+          .then((publishedImage) => {
+            return Promice.race([
+              new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
+              new Promise(async (resolve, _reject) => {
+                const publishedAsset = await handleContentfulAssetEntry(
+                  asset,
+                  publishedImage
+                );
+                const transformForSavingResponse = [
+                  asset,
+                  publishedAsset,
+                  publishedImage,
+                ];
+                resolve(transformForSavingResponse);
+              }),
+            ]);
           })
           // happy path
-          .then((published) => {
-            done.push(transformForSaving(asset, published, publishedImage));
+          .then((result) => {
+            done.push(transformForSaving(...result));
           })
           // badness
           .catch((error) => {
@@ -125,6 +130,48 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
       count += 1;
     }
   });
+async function getExistingImages(client) {
+  try {
+    const images = new Map();
+    let total = Infinity;
+    while (images.size < total) {
+      await delay();
+      const response = await client.getAssets({
+        skip: images.size,
+        limit: 1000,
+      });
+      response.items.forEach((image) => {
+        images.set(image.fields.file[CONTENTFUL_LOCALE].fileName, image);
+      });
+      total = response.total;
+    }
+    return images;
+  } catch (error) {
+    throw `Error in getting existing images: ${error}`;
+  }
+}
+
+// Get all assets in the space
+async function getExistingAssets(client) {
+  try {
+    const assets = new Map();
+    let total = Infinity;
+    while (assets.size < total) {
+      await delay();
+      const response = await client.getAssets({
+        skip: assets.size,
+        limit: 1000,
+      });
+      total = response.total;
+      response.items.forEach((asset) => {
+        assets.set(asset.fields.title[CONTENTFUL_LOCALE], asset);
+      });
+    }
+    return assets;
+  } catch (error) {
+    throw `Error in getting existing assets: ${error}`;
+  }
+}
 
 function transformForUpload(asset) {
   return {
@@ -145,34 +192,50 @@ function transformForUpload(asset) {
     },
   };
 }
-
-async function createAssetEntry(client, wp, cf) {
-  const created = await client.createEntry("asset", {
-    fields: {
-      title: {
-        [CONTENTFUL_LOCALE]: wp.title,
-      },
-      altText: {
-        [CONTENTFUL_LOCALE]: wp.description,
-      },
-      media: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Asset",
-            id: cf.sys.id,
+async function createImageEntry(client, asset) {
+  try {
+    const created = await client.createAsset(transformForUpload(asset));
+    await delay();
+    const processed = await created.processForAllLocales();
+    await delay();
+    const published = await processed.publish();
+    await delay();
+    return published;
+  } catch (error) {
+    throw `Error in image entry creation: ${error}`;
+  }
+}
+async function createAssetEntry(client, wp, cfImage) {
+  try {
+    const created = await client.createEntry("asset", {
+      fields: {
+        title: {
+          [CONTENTFUL_LOCALE]: wp.title,
+        },
+        altText: {
+          [CONTENTFUL_LOCALE]: wp.description,
+        },
+        media: {
+          [CONTENTFUL_LOCALE]: {
+            sys: {
+              type: "Link",
+              linkType: "Asset",
+              id: cfImage.sys.id,
+            },
           },
         },
+        url: {
+          [CONTENTFUL_LOCALE]: cf.fields.file[CONTENTFUL_LOCALE].url,
+        },
       },
-      url: {
-        [CONTENTFUL_LOCALE]: cf.fields.file[CONTENTFUL_LOCALE].url,
-      },
-    },
-  });
-  await delay();
-  const published = await created.publish();
-  await delay();
-  return published;
+    });
+    await delay();
+    const published = await created.publish();
+    await delay();
+    return published;
+  } catch (error) {
+    throw `Error in asset entry creation: ${error}`;
+  }
 }
 
 function transformForSaving(wp, cf, image) {

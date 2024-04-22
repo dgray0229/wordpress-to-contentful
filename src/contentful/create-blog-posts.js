@@ -64,11 +64,9 @@ const createBlogPosts = (posts, client, observer) => {
               return reject({ error: "Post already exists", post: exists });
             }
             await delay();
-            const references = createPostReferences(post);
-            await delay();
             const created = await client.createEntry(
               CONTENT_TYPE,
-              transform(post, references)
+              transform(post)
             );
             await delay();
             const published = await created.publish();
@@ -113,10 +111,8 @@ const createBlogPosts = (posts, client, observer) => {
   });
 };
 
-async function transform(
-  post,
-  { mainTitle, publishDate, content, summary, titleImage: bannerImage, author }
-) {
+async function transform(post) {
+  const { mainTitle, publishDate, content, summary, bannerImage, author } = post.contentful;
   const createdReferences = [
     mainTitle,
     publishDate,
@@ -188,7 +184,7 @@ async function transform(
 
 async function processBlogPosts(client, observer = MOCK_OBSERVER) {
   const files = await findByGlob("*.json", { cwd: POST_DIR_TRANSFORMED });
-  const queue = [...files].sort((a,b) => b - a);
+  const queue = [...files].sort((a, b) => b - a);
   const posts = [];
   while (queue.length) {
     const file = queue.pop();

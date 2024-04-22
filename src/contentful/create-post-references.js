@@ -35,11 +35,10 @@ function createMapsFromAssets(assets) {
   assets.forEach((asset) =>
     links.set(asset.wordpress.link, asset.contentful.url)
   );
-  assets.forEach(
-    (asset) =>
-      asset.wordpress.mediaNumber &&
-      heros.set(asset.wordpress.mediaNumber, asset.contentful.id)
-  );
+  assets.forEach((asset) => {
+    if (asset.wordpress.mediaNumber)
+      heros.set(asset.wordpress.mediaNumber, asset.contentful.id);
+  });
   return [links, heros];
 }
 
@@ -64,90 +63,111 @@ const createPostReferences = async (
   const [inlineMap, heroMap] = createMapsFromAssets(assets);
 
   const createRichTextEntry = (post, client) => {
-    return client.createEntry("richTextMarkdown", {
-      fields: {
-        title: {
-          [CONTENTFUL_LOCALE]: `Content: ${post.title}`,
-        },
-        text: {
-          [CONTENTFUL_LOCALE]: replaceInlineImageUrls(post.body, inlineMap),
-        },
-      },
-    });
-  };
-  const createPublishDateEntry = (post, client) => {
-    return client.createEntry("publishDate", {
-      fields: {
-        title: {
-          [CONTENTFUL_LOCALE]: `Published Date: ${post.title}`,
-        },
-        articlePublishDate: {
-          [CONTENTFUL_LOCALE]: post.publishDate,
-        },
-      },
-    });
-  };
-  const createMainTitleEntry = (post, client) => {
-    return client.createEntry("mainTitle", {
-      fields: {
-        title: {
-          [CONTENTFUL_LOCALE]: `Title: ${post.title}`,
-        },
-        id: {
-          [CONTENTFUL_LOCALE]: post.title,
-        },
-        text: {
-          [CONTENTFUL_LOCALE]: post.title,
-        },
-      },
-    });
-  };
-  const createSummaryEntry = (post, client) => {
-    return client.createEntry("summary", {
-      fields: {
-        title: {
-          [CONTENTFUL_LOCALE]: `Summary: ${post.title}`,
-        },
-        id: {
-          [CONTENTFUL_LOCALE]: post.title,
-        },
-        text: {
-          [CONTENTFUL_LOCALE]: post.title,
-        },
-        description: {
-          [CONTENTFUL_LOCALE]: post.yoast_head_json.description,
-        },
-      },
-    });
-  };
-  const createTitleImageEntry = (post, client) => {
-    const featuredImageExists = heroMap.has(post.featured_media);
-    if (featuredImageExists) {
-      return client.createEntry("titleImage", {
+    try {
+      return client.createEntry("richTextMarkdown", {
         fields: {
           title: {
-            [CONTENTFUL_LOCALE]: `Image: ${post.title}`,
+            [CONTENTFUL_LOCALE]: `Content: ${post.title}`,
           },
-          assets: {
-            [CONTENTFUL_LOCALE]: {
-              sys: {
-                type: "Link",
-                linkType: "Entry",
-                id: heroMap.get(post.featured_media),
-              },
-            },
+          text: {
+            [CONTENTFUL_LOCALE]: replaceInlineImageUrls(post.body, inlineMap),
           },
         },
       });
+    } catch (error) {
+      throw Error(`Rich Text Entry not created for ${post.slug}`);
     }
-    throw Error(`Title Image not defined.`);
+  };
+  const createPublishDateEntry = (post, client) => {
+    try {
+      return client.createEntry("publishDate", {
+        fields: {
+          title: {
+            [CONTENTFUL_LOCALE]: `Published Date: ${post.title}`,
+          },
+          articlePublishDate: {
+            [CONTENTFUL_LOCALE]: post.publishDate,
+          },
+        },
+      });
+    } catch (error) {
+      throw Error(`Publish Date Entry not created for ${post.slug}`);
+    }
+  };
+  const createMainTitleEntry = (post, client) => {
+    try {
+      return client.createEntry("mainTitle", {
+        fields: {
+          title: {
+            [CONTENTFUL_LOCALE]: `Title: ${post.title}`,
+          },
+          id: {
+            [CONTENTFUL_LOCALE]: post.title,
+          },
+          text: {
+            [CONTENTFUL_LOCALE]: post.title,
+          },
+        },
+      });
+    } catch (error) {
+      throw Error(`Main Title Entry not created for ${post.slug}`);
+    }
+  };
+  const createSummaryEntry = (post, client) => {
+    try {
+      return client.createEntry("summary", {
+        fields: {
+          title: {
+            [CONTENTFUL_LOCALE]: `Summary: ${post.title}`,
+          },
+          id: {
+            [CONTENTFUL_LOCALE]: post.title,
+          },
+          text: {
+            [CONTENTFUL_LOCALE]: post.title,
+          },
+          description: {
+            [CONTENTFUL_LOCALE]: post.yoast_head_json.description,
+          },
+        },
+      });
+    } catch (error) {
+      throw Error(`Summary Entry not created for ${post.slug}`);
+    }
+  };
+  const createTitleImageEntry = (post, client) => {
+    try {
+      const featuredImageExists = heroMap.has(post.featured_media);
+      console.log("featuredImageExists", featuredImageExists);
+      if (featuredImageExists) {
+        return client.createEntry("titleImage", {
+          fields: {
+            title: {
+              [CONTENTFUL_LOCALE]: `Image: ${post.title}`,
+            },
+            assets: {
+              [CONTENTFUL_LOCALE]: {
+                sys: {
+                  type: "Link",
+                  linkType: "Entry",
+                  id: heroMap.get(post.featured_media),
+                },
+              },
+            },
+          },
+        });
+      }
+    } catch (error) {
+      throw Error(`Title Image Entry not created for ${post.slug}`);
+    }
   };
   const createAuthorReference = (post, authors) => {
-    const author = authors.find((author) => author.id === post.author);
-
-    if (!author?.contentful?.sys?.id)
-      throw Error(`Author not found in Contentful for ${post.slug}`);
-    else return author.contentful;
+    try {
+      const author = authors.find((author) => author.id === post.author);
+      if (!author?.contentful?.sys?.id) return author.contentful;
+    } catch (error) {
+      throw Error(`Author not found in Contentful for ${post.slug}: ${error}`);
+    }
   };
 
   const createPostReference = (post, authors, failed, client, observer) => {
@@ -199,7 +219,7 @@ const createPostReferences = async (
 async function processBlogReferences(client, observer = MOCK_OBSERVER) {
   const files = await findByGlob("*.json", { cwd: POST_DIR_TRANSFORMED });
   const authors = await fs.readJson(AUTHOR_FILE_PATH);
-  const queue = [...files].sort((a,b) => b - a);
+  const queue = [...files].sort((a, b) => b - a);
   const failed = [];
   const logProgress = () => {
     observer.next(`Remaining: ${queue.length} (${failed.length} failed)`);

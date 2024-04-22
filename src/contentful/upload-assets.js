@@ -134,13 +134,15 @@ async function getExistingImages(client) {
   try {
     const images = new Map();
     let total = Infinity;
-    while (images.size < total) {
+    let skip = 0;
+    while (skip < total) {
       await delay();
       const response = await client.getAssets({
-        skip: images.size,
+        skip: skip,
         limit: 1000,
       });
-      response.items.forEach((image) => {
+      response.items.forEach((image, index) => {
+        skip = index + 1;
         images.set(image.fields.file[CONTENTFUL_LOCALE].fileName, image);
       });
       total = response.total;
@@ -156,14 +158,16 @@ async function getExistingAssets(client) {
   try {
     const assets = new Map();
     let total = Infinity;
-    while (assets.size < total) {
+    let skip = 0;
+    while (skip < total) {
       await delay();
       const response = await client.getAssets({
-        skip: assets.size,
+        skip: skip,
         limit: 1000,
       });
       total = response.total;
-      response.items.forEach((asset) => {
+      response.items.forEach((asset, index) => {
+        skip = index + 1;
         assets.set(asset.fields.title[CONTENTFUL_LOCALE], asset);
       });
     }

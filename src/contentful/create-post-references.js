@@ -57,7 +57,6 @@ const createPostReferences = async (
   client,
   observer
 ) => {
-  observer.next(`Preparing to create posts`);
   const assets = await fs.readJson(DONE_FILE_PATH);
 
   const [inlineMap, heroMap] = createMapsFromAssets(assets);
@@ -221,8 +220,10 @@ async function processBlogReferences(client, observer = MOCK_OBSERVER) {
   const authors = await fs.readJson(AUTHOR_FILE_PATH);
   const queue = [...files].sort((a, b) => b - a);
   const failed = [];
+  const total = queue.length;
   const logProgress = () => {
-    observer.next(`Remaining: ${queue.length} (${failed.length} failed)`);
+    const done = total - queue.length - failed.length;
+    observer.next(`Remaining: ${queue.length} out of ${total}. ${done} done. (${failed.length} failed.)`);
   };
   try {
     while (queue.length) {

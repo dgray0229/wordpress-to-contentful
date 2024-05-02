@@ -3,6 +3,7 @@ const Listr = require("listr");
 
 const testConfig = require("./setup/test-config");
 const cleanDist = require("./setup/clean-dist");
+const downloadCategories = require("./wordpress/category-download");
 const downloadUsers = require("./wordpress/user-download");
 const downloadPosts = require("./wordpress/post-download");
 const transformPosts = require("./wordpress/post-transform");
@@ -42,6 +43,17 @@ const tasks = new Listr([
     },
   },
   {
+    title: "WordPress export: Categories",
+    task: () => {
+      return new Listr([
+        {
+          title: "Download raw JSON",
+          task: () => downloadCategories(),
+        },
+      ]);
+    },
+  },
+  {
     title: "WordPress export: Posts",
     task: () => {
       return new Listr([
@@ -68,26 +80,26 @@ const tasks = new Listr([
         //   title: "Create Content Management API Client",
         //   task: () => createClient()
         // },
-        {
-          title: "Create Authors",
-          task: () => createClient().then(createAuthors),
-        },
-        {
-          title: "Upload assets",
-          task: () => createClient().then(uploadAssets),
-        },
-        {
-          title: "Create Post References",
-          task: () => createClient().then(createPostReferences),
-        },
-        {
-          title: "Match WP 'User' to Contentful 'Person'",
-          task: () => createClient().then(matchAuthorTypes),
-        },
-        {
-          title: "Create Posts",
-          task: () => createClient().then(createBlogPosts),
-        },
+        // {
+        //   title: "Create Authors",
+        //   task: () => createClient().then(createAuthors),
+        // },
+        // {
+        //   title: "Upload assets",
+        //   task: () => createClient().then(uploadAssets),
+        // },
+        // {
+        //   title: "Create Post References",
+        //   task: () => createClient().then(createPostReferences),
+        // },
+        // {
+        //   title: "Match WP 'User' to Contentful 'Person'",
+        //   task: () => createClient().then(matchAuthorTypes),
+        // },
+        // {
+        //   title: "Create Posts",
+        //   task: () => createClient().then(createBlogPosts),
+        // },
       ]);
     },
   },

@@ -8,6 +8,9 @@ const {
   POST_DIR_CREATED,
   USER_DIR_TRANSFORMED,
   CONTENTFUL_FALLBACK_USER_ID,
+  BLOG_LAYOUT,
+  RELATED_TOPICS,
+  CTA_BOTTOM,
   ASSET_DIR_LIST,
   findByGlob,
 } = require("../util");
@@ -64,9 +67,11 @@ const createBlogPosts = (posts, client, observer) => {
               return reject({ error: "Post already exists", post: exists });
             }
             await delay();
+            const referenceFields = transform(post);
+
             const created = await client.createEntry(
               CONTENT_TYPE,
-              transform(post)
+              referenceFields
             );
             await delay();
             const published = await created.publish();
@@ -111,75 +116,73 @@ const createBlogPosts = (posts, client, observer) => {
   });
 };
 
-async function transform(post) {
-  const { mainTitle, publishDate, content, summary, bannerImage, author } = post.contentful;
-  const createdReferences = [
-    mainTitle,
-    publishDate,
-    content,
-    summary,
-    bannerImage,
-    author,
-  ];
-  const fields = {
-    title: {
-      [CONTENTFUL_LOCALE]: post.title,
-    },
-    slug: {
-      [CONTENTFUL_LOCALE]: post.slug,
-    },
-    layout: {
-      [CONTENTFUL_LOCALE]: {
-        sys: {
-          type: "Link",
-          linkType: "Entry",
-          id: BLOG_LAYOUT,
+function transform(post) {
+  const postFields = {
+    fields: {
+      title: {
+        [CONTENTFUL_LOCALE]: post.title,
+      },
+      slug: {
+        [CONTENTFUL_LOCALE]: post.slug,
+      },
+      layout: {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: BLOG_LAYOUT,
+          },
         },
       },
-    },
-    relatedTopics: {
-      [CONTENTFUL_LOCALE]: {
-        sys: {
-          type: "Link",
-          linkType: "Entry",
-          id: RELATED_TOPICS[Math.floor(Math.random() * RELATED_TOPICS.length)],
+      relatedTopics: {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id:
+              RELATED_TOPICS[Math.floor(Math.random() * RELATED_TOPICS.length)],
+          },
         },
       },
-    },
-    relatedTopicsBottom: {
-      [CONTENTFUL_LOCALE]: {
-        sys: {
-          type: "Link",
-          linkType: "Entry",
-          id: RELATED_TOPICS[Math.floor(Math.random() * RELATED_TOPICS.length)],
+      relatedTopicsBottom: {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id:
+              RELATED_TOPICS[Math.floor(Math.random() * RELATED_TOPICS.length)],
+          },
         },
       },
-    },
-    ctaBottom: {
-      [CONTENTFUL_LOCALE]: {
-        sys: {
-          type: "Link",
-          linkType: "Entry",
-          id: CTA_BOTTOM,
+      ctaBottom: {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: CTA_BOTTOM,
+          },
         },
       },
     },
   };
 
-  createdReferences.forEach((ref) => {
-    if (ref) {
-      fields[ref] = {
+  for (let property in post.contentful) {
+    const value = post.contentful[property];
+    const entryID = post.contentful[property]?.sys?.id;
+    if (value && entryID) {
+      postFields.fields[property] = {
         [CONTENTFUL_LOCALE]: {
           sys: {
             type: "Link",
             linkType: "Entry",
-            id: [ref]?.sys?.id,
+            id: entryID,
           },
         },
       };
     }
-  });
-  return fields;
+  }
+  console.log("postFields", postFields);
+  return postFields;
 }
 
 async function processBlogPosts(client, observer = MOCK_OBSERVER) {

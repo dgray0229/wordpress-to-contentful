@@ -7,8 +7,6 @@ const { POST_DIR_ORIGINALS, MOCK_OBSERVER, WP_API_URL } = require("../util");
 const urlForPage = (url, page) => `${url}/posts?page=${page}`;
 
 const posts = async (url, observer = MOCK_OBSERVER) => {
-  await fs.ensureDir(POST_DIR_ORIGINALS);
-
   const postsByPage = async (page = 1) => {
     observer.next(`Getting posts by page (${page})`);
     const response = await fetch(urlForPage(url, page));
@@ -23,11 +21,17 @@ const posts = async (url, observer = MOCK_OBSERVER) => {
     // if it was working before, but it isn't anymore
     // we've reached the end of the paginated list
     if (status === 400) return observer.complete();
-    // badness
-    throw new Error(response);
   };
+  try {
+    await fs.ensureDir(POST_DIR_ORIGINALS);
+    postsByPage();
+
+  } catch (error) {
+    // badness
+    throw new Error(error.mesage);
+  }
   // kick of recursive requests
-  postsByPage();
 };
 
-module.exports = () => new Observable(observer => posts(WP_API_URL, observer));
+module.exports = () =>
+  new Observable((observer) => posts(WP_API_URL, observer));

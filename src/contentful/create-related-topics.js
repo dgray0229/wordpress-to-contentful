@@ -25,31 +25,39 @@ const ASSETS_FILE_PATH = path.join(ASSET_DIR_LIST, "assets.json");
 
 const CATEGORY_FILE_PATH = path.join('dist/categories-original', "categories.json");
 const RESULTS_PATH = path.join(POST_DIR_CREATED, "posts.json");
-
+const CONTENT_TYPE = "relatedTopics"
 const delay = (dur = API_DELAY_DUR) =>
   new Promise((resolve) => setTimeout(resolve, dur));
 
-function createMapsFromAssets(assets) {
-  const links = new Map();
-  const heros = new Map();
-  assets.forEach((asset) =>
-    links.set(asset.wordpress.link, asset.contentful.url)
-  );
-  assets.forEach((asset) => {
-    if (asset.wordpress.mediaNumber)
-      heros.set(asset.wordpress.mediaNumber, asset.contentful.id);
-  });
-  return [links, heros];
-}
 
-function replaceInlineImageUrls(text, map) {
-  let replacedText = text;
-  map.forEach((newUrl, oldUrl) => {
-    replacedText = replacedText.replace(oldUrl, newUrl);
-  });
-  return replacedText;
-}
+  async function getExistingTopics(client) {
+    try {
+      const topics = new Map();
+      let total = Infinity;
+      let skip = 0;
+      while (skip < total) {
+        await delay();
+        const response = await client.getEntries({
+          content_type: CONTENT_TYPE,
+          skip: skip,
+          limit: 1000,
+        });
+        total = response.total;
+        response.items.forEach((topic, index) => {
+          skip = index + 1;
+          topics.set(topic.fields.title[CONTENTFUL_LOCALE], topic);
+        });
+      }
+      return topics;
+    } catch (error) {
+      throw `Error in getting existing topics: ${error}`;
+    }
+  }
 
+  const transformUrl = (url) => {
+    const BASE_URL = "https://taxacttest.wpengine.com";
+  }
+  
 const createRelatedTopics = async (
   post,
   authors,
@@ -75,6 +83,9 @@ const createRelatedTopics = async (
       throw Error(`Rich Text Entry not created for ${post.slug}`);
     }
   };
+  const exists = await getExistingTopics(client);
+  const relatedTopics = [];
+
 }
 
 async function processCategories(client, observer = MOCK_OBSERVER) {

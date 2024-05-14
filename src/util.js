@@ -17,6 +17,8 @@ const ASSET_DIR_LIST = path.join(BUILD_DIR, "list-of-assets");
 const REDIRECTS_DIR = path.join(BUILD_DIR, "redirects");
 const CATEGORY_DIR_ORIGINALS = path.join(BUILD_DIR, "categories-original");
 const CATEGORY_DIR_TRANSFORMED = path.join(BUILD_DIR, "categories-transformed");
+const LINKS_DIR_ORIGINALS = path.join(BUILD_DIR, "links-original");
+const LINKS_DIR_TRANSFORMED = path.join(BUILD_DIR, "links-transformed");
 const {
   REDIRECT_BASE_URL,
   WP_API_URL,
@@ -80,6 +82,8 @@ module.exports = {
   USER_DIR_ORIGINALS,
   CATEGORY_DIR_ORIGINALS,
   CATEGORY_DIR_TRANSFORMED,
+  LINKS_DIR_ORIGINALS,
+  LINKS_DIR_TRANSFORMED,
   ASSET_DIR_LIST,
   REDIRECTS_DIR,
   REDIRECT_BASE_URL,

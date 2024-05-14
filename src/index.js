@@ -13,6 +13,8 @@ const uploadAssets = require("./contentful/upload-assets");
 const matchAuthorTypes = require("./contentful/match-author-types");
 const createBlogPosts = require("./contentful/create-blog-posts");
 const createAuthors = require("./contentful/create-authors");
+const createRelatedLinks = require("./contentful/match-related-links");
+const createRelatedTopics = require("./contentful/match-related-topics");
 const createPostReferences = require("./contentful/create-post-references");
 
 const tasks = new Listr([
@@ -76,30 +78,38 @@ const tasks = new Listr([
     title: "Contentful import",
     task: () => {
       return new Listr([
-        // {
-        //   title: "Create Content Management API Client",
-        //   task: () => createClient()
-        // },
-        // {
-        //   title: "Create Authors",
-        //   task: () => createClient().then(createAuthors),
-        // },
-        // {
-        //   title: "Upload assets",
-        //   task: () => createClient().then(uploadAssets),
-        // },
-        // {
-        //   title: "Create Post References",
-        //   task: () => createClient().then(createPostReferences),
-        // },
-        // {
-        //   title: "Match WP 'User' to Contentful 'Person'",
-        //   task: () => createClient().then(matchAuthorTypes),
-        // },
-        // {
-        //   title: "Create Posts",
-        //   task: () => createClient().then(createBlogPosts),
-        // },
+        {
+          title: "Create Content Management API Client",
+          task: () => createClient(),
+        },
+        {
+          title: "Create Topic Links",
+          task: () => createClient().then(createRelatedLinks),
+        },
+        {
+          title: "Create Related Links",
+          task: () => createClient().then(createRelatedTopics),
+        },
+        {
+          title: "Create Authors",
+          task: () => createClient().then(createAuthors),
+        },
+        {
+          title: "Upload Assets",
+          task: () => createClient().then(uploadAssets),
+        },
+        {
+          title: "Create Post References",
+          task: () => createClient().then(createPostReferences),
+        },
+        {
+          title: "Match WP 'User' to Contentful 'Person'",
+          task: () => createClient().then(matchAuthorTypes),
+        },
+        {
+          title: "Create Posts",
+          task: () => createClient().then(createBlogPosts),
+        },
       ]);
     },
   },

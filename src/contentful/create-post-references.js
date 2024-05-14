@@ -25,7 +25,7 @@ const ASSETS_FILE_PATH = path.join(ASSET_DIR_LIST, "assets.json");
 
 const AUTHOR_FILE_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
 const RESULTS_PATH = path.join(POST_DIR_CREATED, "posts.json");
-
+const BLOG_PAGE_ENTRY_ID ="2iyZIcmdojox2kdPIRKAnO"
 const delay = (dur = API_DELAY_DUR) =>
   new Promise((resolve) => setTimeout(resolve, dur));
 
@@ -160,6 +160,43 @@ const createPostReferences = async (
       throw Error(`Title Image Entry not created for ${post.slug}`);
     }
   };
+  const createBreadcrumbsEntry = (post, client) => {
+    try {
+      return client.createEntry("breadcrumbs", {
+        fields: {
+          title: {
+            [CONTENTFUL_LOCALE]: `BreadCrumbs: ${post.title}`,
+          },
+          id: {
+            [CONTENTFUL_LOCALE]: post.title,
+          },
+          titleOverride: {
+            [CONTENTFUL_LOCALE]: post.title,
+          },
+          breadcrumbs: {
+            [CONTENTFUL_LOCALE]: [
+              {
+                sys: {
+                  type: "Link",
+                  linkType: "Entry",
+                  id: BLOG_PAGE_ENTRY_ID,
+              },
+            },
+            {
+              sys: {
+                type: "Link",
+                linkType: "Entry",
+                id: post.categories[0],
+              },
+            }
+            ]
+          },
+        },
+      });
+    } catch (error) {
+      throw Error(`BreadCrumbs Entry not created for ${post.slug}`);
+    }
+  }
   const createAuthorReference = (post, authors) => {
     try {
       const author = authors.find((author) => author.id === post.author);

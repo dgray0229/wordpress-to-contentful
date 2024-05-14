@@ -6,8 +6,6 @@ const {
   CONTENTFUL_LOCALE,
   POST_DIR_TRANSFORMED,
   POST_DIR_CREATED,
-  USER_DIR_TRANSFORMED,
-  CONTENTFUL_FALLBACK_USER_ID,
   ASSET_DIR_LIST,
   findByGlob,
 } = require("../util");
@@ -25,12 +23,63 @@ const ASSETS_FILE_PATH = path.join(ASSET_DIR_LIST, "assets.json");
 
 const CATEGORY_FILE_PATH = path.join('dist/categories-original', "categories.json");
 const RESULTS_PATH = path.join(POST_DIR_CREATED, "posts.json");
-const CONTENT_TYPE = "relatedTopics"
+const CATEGORY_CONTENT_TYPE = "topicPage";
+const CATEGORY_REFERENCE_CONTENT_TYPE = "relatedTopics";
+const LINK_TYPE = "link";
+const BLOG_URL = "https://taxact.com/blog/category/";
+
 const delay = (dur = API_DELAY_DUR) =>
   new Promise((resolve) => setTimeout(resolve, dur));
 
+async function getExistingLinks(client) {
+  try {
+    const links = new Map();
+    let total = Infinity;
+    let skip = 0;
+    while (skip < total) {
+      await delay();
+      const response = await client.getEntries({
+        content_type: CATEGORY_CONTENT_TYPE,
+        skip: skip,
+        limit: 1000,
+      });
+      total = response.total;
+      response.items.forEach((link, index) => {
+        skip = index + 1;
+        links.set(link.fields.title[CONTENTFUL_LOCALE], link);
+      });
+    }
+    return links;
+  } catch (error) {
+    throw `Error in getting existing links: ${error}`;
+  }
 
-  async function getExistingTopics(client) {
+}
+  async function getExistingTopicPages(client) {
+    try {
+      const links = new Map();
+      let total = Infinity;
+      let skip = 0;
+      while (skip < total) {
+        await delay();
+        const response = await client.getEntries({
+          content_type: LINK_TYPE,
+          skip: skip,
+          limit: 1000,
+        });
+        total = response.total;
+        response.items.forEach((link, index) => {
+          skip = index + 1;
+          links.set(link.fields.title[CONTENTFUL_LOCALE], link);
+        });
+      }
+      return links;
+    } catch (error) {
+      throw `Error in getting existing links: ${error}`;
+    }
+  }
+
+  async function getExistingRelatedTopics(client) {
     try {
       const topics = new Map();
       let total = Infinity;
@@ -38,7 +87,7 @@ const delay = (dur = API_DELAY_DUR) =>
       while (skip < total) {
         await delay();
         const response = await client.getEntries({
-          content_type: CONTENT_TYPE,
+          content_type: CATEGORY_REFERENCE_CONTENT_TYPE,
           skip: skip,
           limit: 1000,
         });
@@ -52,12 +101,8 @@ const delay = (dur = API_DELAY_DUR) =>
     } catch (error) {
       throw `Error in getting existing topics: ${error}`;
     }
-  }
-
-  const transformUrl = (url) => {
-    const BASE_URL = "https://taxacttest.wpengine.com";
-  }
   
+  }
 const createRelatedTopics = async (
   post,
   authors,
@@ -67,7 +112,7 @@ const createRelatedTopics = async (
 ) => {
   const assets = await fs.readJson(DONE_FILE_PATH);
 
-  const createRelatedTopic = (post, client) => {
+  const createRelatedTopicEntry = (post, client) => {
     try {
       return client.createEntry("relatedTopics", {
         fields: {
@@ -86,6 +131,45 @@ const createRelatedTopics = async (
   const exists = await getExistingTopics(client);
   const relatedTopics = [];
 
+}
+const createLinkEntry = (post, client) => {
+  try {
+    return client.createEntry("link", {
+      fields: {
+        title: {
+          [CONTENTFUL_LOCALE]: `Content: ${post.title}`,
+        },
+        id: {
+          [CONTENTFUL_LOCALE]: post.slug,
+        },
+        url: {
+          [CONTENTFUL_LOCALE]: `${BLOG_URL}${post.slug}`,
+        },
+      },
+    });
+  } catch (error) {
+    throw Error(`Rich Text Entry not created for ${post.slug}`);
+  }
+};
+
+const createTopicLinks = async (post, client) => {
+  try {
+    const existingLinks = await getExistingLinks(client);
+    const existingRelatedTopics = await getExistingRelatedTopics(client);
+    const relatedLinks = [];
+    post.topics.forEach(async (topic) => {
+      const found = existingLinks.get(topic);
+      if (found) {
+        relatedLinks.push(found);
+      } else {
+        const relatedTopic = await createTopicLinks(topic, client);
+        relatedLinks.push(relatedTopic);
+      }
+    });
+    return relatedLinks;
+  } catch (error) {
+    throw Error(`Error in creating topic links: ${error}`);
+  }
 }
 
 async function processCategories(client, observer = MOCK_OBSERVER) {

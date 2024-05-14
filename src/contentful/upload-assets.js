@@ -46,9 +46,6 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
         const fileName = trimUrlToFilename(identifier);
         let publishedImage = null;
         if (existingImages.has(fileName)) {
-          observer.next(
-            `Found existing image: ${fileName}. Skipping upload...`
-          );
           publishedImage = existingImages.get(fileName);
         } else {
           publishedImage = await createImageEntry(client, asset);
@@ -76,8 +73,8 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
         Promise.race([
           new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
           new Promise(async (resolve) => {
-            processing.add(identifier);
             proglog();
+            processing.add(identifier);
             const publishedImage = await handleContentfulImageEntry();
             resolve(publishedImage);
           }),
@@ -111,7 +108,6 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
           // either
           .finally(() => {
             processing.delete(identifier);
-            proglog();
             // more in queue case
             if (queue.length) upload(queue.pop());
             // no more in queue, but at lesat one parallel

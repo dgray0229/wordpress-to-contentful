@@ -24,9 +24,11 @@ const categories = async (url, observer) => {
       });
       result.forEach((category) => {
         const parentID = category.parent;
+        category.description = category.name;
         if (parentID !== 0) {
           const parentCategorySlug = categoryMap[parentID].slug;
           category.slug = `${parentCategorySlug}/${category.slug}`;
+          category.description = `${categoryMap[parentID].name} > ${category.name}`;
         };
       });
       return result;

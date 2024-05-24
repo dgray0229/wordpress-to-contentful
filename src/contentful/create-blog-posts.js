@@ -181,7 +181,6 @@ function transform(post) {
       };
     }
   }
-  console.log("postFields", postFields);
   return postFields;
 }
 

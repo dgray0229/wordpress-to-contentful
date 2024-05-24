@@ -49,13 +49,16 @@ async function findTopicInContentful(
 async function createTopicEntry(client, observer, topic, linkEntry) {
   const { id } = linkEntry.contentful;
   try {
-    return await client.createEntry("relatedTopics", {
+    return await client.createEntry("topicPage", {
       fields: {
         title: {
           [CONTENTFUL_LOCALE]: `${topic.name}`,
         },
-        id: {
+        description: {
           [CONTENTFUL_LOCALE]: topic.slug,
+        },
+        slug: {
+          [CONTENTFUL_LOCALE]: `/blog/topic/${topic.slug}`,
         },
         topicsList: {
           [CONTENTFUL_LOCALE]: [

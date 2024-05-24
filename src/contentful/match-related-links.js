@@ -17,24 +17,25 @@ async function findLinkInContentful(client, wpLink, cfLinks) {
     .map(transformCfLink)
     .find(({ url = "" }) => url.includes(wpLink.slug));
 
-    if (!found) {
-      found = (await client.createEntry("link", {
-        fields: {
-          title: {
-            [CONTENTFUL_LOCALE]: `${wpLink.name}`,
-          },
-          text: {
-            [CONTENTFUL_LOCALE]: `${wpLink.name}`,
-          },
-          id: {
-            [CONTENTFUL_LOCALE]: wpLink.slug,
-          },
-          url: {
-            [CONTENTFUL_LOCALE]: `/blog/topic/${wpLink.slug}`,
-          },
+  if (!found) {
+    const linkEntry = await client.createEntry("link", {
+      fields: {
+        title: {
+          [CONTENTFUL_LOCALE]: `${wpLink.name}`,
         },
-      }))(transformCfLink)
-    }
+        text: {
+          [CONTENTFUL_LOCALE]: `${wpLink.name}`,
+        },
+        id: {
+          [CONTENTFUL_LOCALE]: wpLink.slug,
+        },
+        url: {
+          [CONTENTFUL_LOCALE]: `/blog/topic/${wpLink.slug}`,
+        },
+      },
+    });
+    found = transformCfLink(linkEntry);
+  }
 
   return {
     wordpress: {

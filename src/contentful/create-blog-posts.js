@@ -36,6 +36,7 @@ const createBlogPosts = (posts, client, observer) => {
     const queue = [].concat(posts).sort((a, b) => b - a);
     const processing = new Set();
     const done = [];
+    const skipped = [];
     const failed = [];
 
     observer.next(`Preparing to create ${queue.length} posts`);
@@ -44,7 +45,7 @@ const createBlogPosts = (posts, client, observer) => {
       observer.next(
         `Remaining: ${queue.length} (${processing.size} uploading, ${
           done.length
-        } done, ${failed.length} failed)`
+        } done, ${failed.length} failed), skipped: ${skipped.length}`
       );
     };
 
@@ -56,7 +57,7 @@ const createBlogPosts = (posts, client, observer) => {
       return (
         Promise.race([
           new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
-          new Promise(async (resolve, reject) => {
+          new Promise(async (resolve, _reject) => {
             await delay();
 
             const exists = await client.getEntries({
@@ -64,7 +65,7 @@ const createBlogPosts = (posts, client, observer) => {
               "fields.slug[in]": post.slug,
             });
             if (exists && exists.total > 0) {
-              return reject({ error: "Post already exists", post: exists });
+              return resolve({ skipped: true, post: exists });
             }
             await delay();
             const referenceFields = transform(post);
@@ -81,8 +82,9 @@ const createBlogPosts = (posts, client, observer) => {
         ])
 
           // happy path
-          .then((_published) => {
-            done.push(post);
+          .then((published) => {
+            if (published.skipped) return skipped.push(post);
+            return done.push(post);
           })
           // badness
           .catch((error) => {
@@ -101,7 +103,7 @@ const createBlogPosts = (posts, client, observer) => {
             // no more in queue, but at lesat one parallel
             // process is in progress
             else if (processing.size) return;
-            else complete({ done, failed });
+            else complete({ done, failed, skipped });
           })
       );
     };
@@ -166,7 +168,7 @@ function transform(post) {
     },
   };
 
-  for (let property in post.contentful) {
+  for (const property in post.contentful) {
     const value = post.contentful[property];
     const entryID = post.contentful[property]?.sys?.id;
     if (value && entryID) {
@@ -193,9 +195,6 @@ async function processBlogPosts(client, observer = MOCK_OBSERVER) {
     const post = await fs.readJson(path.join(POST_DIR_TRANSFORMED, file));
     posts.push(post);
   }
-
-  const assets = await fs.readJson(DONE_FILE_PATH);
-  const authors = await fs.readJson(AUTHOR_FILE_PATH);
 
   const result = await createBlogPosts(posts, client, observer);
 

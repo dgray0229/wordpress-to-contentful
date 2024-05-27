@@ -83,6 +83,10 @@ const tasks = new Listr([
           task: () => createClient(),
         },
         {
+          title: "Upload Assets",
+          task: () => createClient().then(uploadAssets),
+        },
+        {
           title: "Create Topic Links",
           task: () => createClient().then(createRelatedLinks),
         },
@@ -93,10 +97,6 @@ const tasks = new Listr([
         {
           title: "Create Authors",
           task: () => createClient().then(createAuthors),
-        },
-        {
-          title: "Upload Assets",
-          task: () => createClient().then(uploadAssets),
         },
         {
           title: "Create Post References",

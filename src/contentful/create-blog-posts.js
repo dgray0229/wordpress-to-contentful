@@ -23,9 +23,9 @@ const PROCESSES = 8;
 const API_DELAY_DUR = 1000;
 const UPLOAD_TIMEOUT = 60000;
 
-const DONE_FILE_PATH = path.join(ASSET_DIR_LIST, "done.json");
-const AUTHOR_FILE_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
-const RESULTS_PATH = path.join(POST_DIR_CREATED, "posts.json");
+const DONE_FILE_PATH = path.join(POST_DIR_CREATED, "done.json");
+const FAILED_FILE_PATH = path.join(POST_DIR_CREATED, "failed.json");
+const SKIPPED_FILE_PATH = path.join(POST_DIR_CREATED, "skipped.json");
 
 const CONTENT_TYPE = "articlePage";
 const delay = (dur = API_DELAY_DUR) =>
@@ -196,11 +196,12 @@ async function processBlogPosts(client, observer = MOCK_OBSERVER) {
     posts.push(post);
   }
 
-  const result = await createBlogPosts(posts, client, observer);
+  const {done, failed, skipped} = await createBlogPosts(posts, client, observer);
 
   await fs.ensureDir(POST_DIR_CREATED);
-  await fs.writeJson(RESULTS_PATH, result, { spaces: 2 });
-  return result;
+  await fs.writeJson(DONE_FILE_PATH, done, { spaces: 2 });
+  await fs.writeJson(FAILED_FILE_PATH, failed, { spaces: 2 });
+  await fs.writeJson(SKIPPED_FILE_PATH, skipped, { spaces: 2 });
 }
 
 module.exports = (client) =>

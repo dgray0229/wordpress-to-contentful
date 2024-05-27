@@ -18,6 +18,7 @@ const API_DELAY_DUR = 1000;
 const UPLOAD_TIMEOUT = 60000;
 // out dests
 const DONE_FILE_PATH = path.join(ASSET_DIR_LIST, "done.json");
+const SKIPPED_FILE_PATH = path.join(ASSET_DIR_LIST, "skipped.json");
 const FAILED_FILE_PATH = path.join(ASSET_DIR_LIST, "failed.json");
 
 const delay = (dur = API_DELAY_DUR) =>
@@ -28,6 +29,7 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
     const queue = [].concat(assets);
     const processing = new Set();
     const done = [];
+    const skipped = [];
     const failed = [];
     const existingImages = await getExistingImages(client);
     const existingAssets = await getExistingAssets(client);
@@ -36,36 +38,42 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
       observer.next(
         `Remaining: ${queue.length} (${processing.size} uploading, ${
           done.length
-        } done, ${failed.length} failed)`
+        } done, ${failed.length} failed), skipped: ${skipped.length}.`
       );
     };
 
     const upload = (asset) => {
       const identifier = asset.link;
       const handleContentfulImageEntry = async () => {
-        const fileName = trimUrlToFilename(identifier);
-        let publishedImage = null;
-        if (existingImages.has(fileName)) {
-          publishedImage = existingImages.get(fileName);
-        } else {
-          publishedImage = await createImageEntry(client, asset);
+        try {
+          const fileName = trimUrlToFilename(identifier);
+          let publishedImage = null;
+          if (existingImages.has(fileName)) {
+            publishedImage = existingImages.get(fileName);
+          } else {
+            publishedImage = await createImageEntry(client, asset);
+          }
+          if (!publishedImage) throw "Error in image entry creation: no image.";
+          return publishedImage;
+        } catch (error) {
+          throw `Error in image entry creation: ${error}`;
         }
-        return publishedImage;
       };
       const handleContentfulAssetEntry = async (asset, publishedImage) => {
-        const title = asset.title;
-        let publishedAsset = null;
-        if (existingAssets.has(title)) {
-          observer.next(`Found existing asset: ${title}. Skipping upload...`);
-          publishedAsset = existingAssets.get(title);
-        } else {
-          publishedAsset = await createAssetEntry(
-            client,
-            asset,
-            publishedImage
-          );
+        try {
+          const { title } = asset;
+          let publishedAsset = null;
+          const processed = existingAssets.has(title);
+          publishedAsset = processed
+            ? { result: existingAssets.get(title), processed: true }
+            : {
+                result: await createAssetEntry(client, asset, publishedImage),
+                processed,
+              };
+          return publishedAsset;
+        } catch (error) {
+          throw `Error in asset entry creation: ${error}`;
         }
-        return publishedAsset;
       };
 
       // If the asset has already been uploaded, skip it
@@ -76,34 +84,43 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
             proglog();
             processing.add(identifier);
             const publishedImage = await handleContentfulImageEntry();
+            if (!publishedImage)
+              reject("Error in image entry production: no image.");
             resolve(publishedImage);
           }),
         ])
-          .then((publishedImage) => {
-            return Promice.race([
+          .then((publishedImage) =>
+            Promise.race([
               new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
-              new Promise(async (resolve, _reject) => {
-                const publishedAsset = await handleContentfulAssetEntry(
+              new Promise(async (resolve, reject) => {
+                const response = await handleContentfulAssetEntry(
                   asset,
                   publishedImage
                 );
+                if (!response) return reject("No response from asset entry.");
+                const { result: publishedAsset, processed } = response;
+                if (!publishedAsset)
+                  throw "Error in asset entry production: no asset.";
                 const transformForSavingResponse = [
                   asset,
                   publishedAsset,
                   publishedImage,
                 ];
-                resolve(transformForSavingResponse);
+                resolve({ result: transformForSavingResponse, processed });
+              }).catch((error) => {
+                throw `Error in asset entry production: ${error}`;
               }),
-            ]);
-          })
+            ])
+          )
           // happy path
-          .then((result) => {
-            done.push(transformForSaving(...result));
+          .then(({ result, processed }) => {
+            const assetMetadata = transformForSaving(...result);
+            if (processed) return skipped.push(assetMetadata);
+            return done.push(assetMetadata);
           })
-          // badness
           .catch((error) => {
             // TODO: retry failed
-            failed.push({ asset, error });
+            failed.push({ asset, error: error.message });
           })
           // either
           .finally(() => {
@@ -113,7 +130,7 @@ const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
             // no more in queue, but at lesat one parallel
             // process is in progress
             else if (processing.size) return;
-            else complete({ done, failed });
+            else complete({ done, failed, skipped });
           })
       );
     };
@@ -205,15 +222,15 @@ async function createImageEntry(client, asset) {
     throw `Error in image entry creation: ${error}`;
   }
 }
-async function createAssetEntry(client, wp, cfImage) {
+async function createAssetEntry(client, wpAsset, cfImage) {
   try {
     const created = await client.createEntry("asset", {
       fields: {
         title: {
-          [CONTENTFUL_LOCALE]: wp.title,
+          [CONTENTFUL_LOCALE]: wpAsset.title,
         },
         altText: {
-          [CONTENTFUL_LOCALE]: wp.description,
+          [CONTENTFUL_LOCALE]: wpAsset.description,
         },
         media: {
           [CONTENTFUL_LOCALE]: {
@@ -225,7 +242,7 @@ async function createAssetEntry(client, wp, cfImage) {
           },
         },
         url: {
-          [CONTENTFUL_LOCALE]: cf.fields.file[CONTENTFUL_LOCALE].url,
+          [CONTENTFUL_LOCALE]: cfImage?.fields.file[CONTENTFUL_LOCALE].url,
         },
       },
     });
@@ -238,27 +255,36 @@ async function createAssetEntry(client, wp, cfImage) {
   }
 }
 
-function transformForSaving(wp, cf, image) {
-  const assetInfo = {
-    wordpress: wp,
-    contentful: {
-      id: cf.sys.id,
-      title: cf.fields.title[CONTENTFUL_LOCALE],
-      altText: cf.fields.altText[CONTENTFUL_LOCALE],
-      url: image.fields.file[CONTENTFUL_LOCALE].url,
-      media: image.fields.file[CONTENTFUL_LOCALE].fileName,
-    },
-  };
-  return assetInfo;
+function transformForSaving(wpAsset, cfAsset, cfImage) {
+  try {
+    const assetInfo = {
+      wordpress: wpAsset,
+      contentful: {
+        id: cfAsset?.sys.id,
+        title: cfAsset?.fields.title[CONTENTFUL_LOCALE],
+        altText: wpAsset?.description,
+        url: cfImage?.fields.file[CONTENTFUL_LOCALE].url,
+        media: cfImage?.fields.file[CONTENTFUL_LOCALE].fileName,
+      },
+    };
+    return assetInfo;
+  } catch (error) {
+    throw `Error in transforming for saving: ${error}`;
+  }
 }
 
 async function uploadListOfAssets(client, observer) {
   const loc = path.join(ASSET_DIR_LIST, "assets.json");
   const assets = await fs.readJson(loc);
-  const { done, failed } = await uploadAssets(client, assets, observer);
+  const { done, failed, skipped } = await uploadAssets(
+    client,
+    assets,
+    observer
+  );
   await uploadAssets(client, assets, observer);
   await Promise.all([
     fs.writeJson(DONE_FILE_PATH, done, { spaces: 2 }),
+    fs.writeJson(SKIPPED_FILE_PATH, skipped, { spaces: 2 }),
     fs.writeJson(FAILED_FILE_PATH, failed, { spaces: 2 }),
   ]);
 }

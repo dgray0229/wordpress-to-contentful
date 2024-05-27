@@ -156,7 +156,6 @@ const createPostReferences = async (
   const createTitleImageEntry = (post, client) => {
     try {
       const featuredImageExists = heroMap.has(post.featured_media);
-      console.log("featuredImageExists", featuredImageExists);
       if (featuredImageExists) {
         return client.createEntry("titleImage", {
           fields: {

@@ -7,26 +7,29 @@ const {
   POST_DIR_TRANSFORMED,
   USER_DIR_TRANSFORMED,
   CATEGORY_DIR_TRANSFORMED,
+  BLOG_PAGE_ENTRY_ID,
   ASSET_DIR_LIST,
+  AUTHOR,
+  RELATED_TOPICS,
+  RICH_TEXT_MARKDOWN,
+  PUBLISH_DATE,
+  MAIN_TITLE,
+  SUMMARY,
+  TITLE_IMAGE,
+  BREADCRUMBS,
+
   findByGlob,
+  delay,
 } = require("../util");
-const { create } = require("domain");
-const { get } = require("http");
 
 // Do not exceed ten, delay is an important factor too
 // 8 processes and 1s delay seem to make sense, for 10p/s
-const PROCESSES = 8;
 // add delays to try and avoid API request limits in
 // the parallel processes
-const API_DELAY_DUR = 1000;
-const UPLOAD_TIMEOUT = 60000;
 
 const DONE_FILE_PATH = path.join(ASSET_DIR_LIST, "done.json");
 
 const AUTHOR_FILE_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
-const BLOG_PAGE_ENTRY_ID = "2iyZIcmdojox2kdPIRKAnO";
-const delay = (dur = API_DELAY_DUR) =>
-  new Promise((resolve) => setTimeout(resolve, dur));
 
 function createMapsFromAssets(assets) {
   const links = new Map();
@@ -82,7 +85,7 @@ const createPostReferences = async (
 
   const createRichTextEntry = (post, client) => {
     try {
-      return client.createEntry("richTextMarkdown", {
+      return client.createEntry(RICH_TEXT_MARKDOWN, {
         fields: {
           title: {
             [CONTENTFUL_LOCALE]: `Content: ${post.title}`,
@@ -98,7 +101,7 @@ const createPostReferences = async (
   };
   const createPublishDateEntry = (post, client) => {
     try {
-      return client.createEntry("publishDate", {
+      return client.createEntry(PUBLISH_DATE, {
         fields: {
           title: {
             [CONTENTFUL_LOCALE]: `Published Date: ${post.title}`,
@@ -106,6 +109,9 @@ const createPostReferences = async (
           articlePublishDate: {
             [CONTENTFUL_LOCALE]: post.publishDate,
           },
+          readTime: {
+            [CONTENTFUL_LOCALE]: post.yoast_head_json.twitter_misc["Est. reading time"],
+          }
         },
       });
     } catch (error) {
@@ -114,7 +120,7 @@ const createPostReferences = async (
   };
   const createMainTitleEntry = (post, client) => {
     try {
-      return client.createEntry("mainTitle", {
+      return client.createEntry(MAIN_TITLE, {
         fields: {
           title: {
             [CONTENTFUL_LOCALE]: `Title: ${post.title}`,
@@ -133,7 +139,7 @@ const createPostReferences = async (
   };
   const createSummaryEntry = (post, client) => {
     try {
-      return client.createEntry("summary", {
+      return client.createEntry(SUMMARY, {
         fields: {
           title: {
             [CONTENTFUL_LOCALE]: `Summary: ${post.title}`,
@@ -157,7 +163,7 @@ const createPostReferences = async (
     try {
       const featuredImageExists = heroMap.has(post.featured_media);
       if (featuredImageExists) {
-        return client.createEntry("titleImage", {
+        return client.createEntry(TITLE_IMAGE, {
           fields: {
             title: {
               [CONTENTFUL_LOCALE]: `Image: ${post.title}`,
@@ -180,16 +186,51 @@ const createPostReferences = async (
   };
   const createAuthorReference = (post, authors) => {
     try {
-      const author = authors.find((author) => author.id === post.author);
-      if (!author?.contentful?.sys?.id) return author.contentful;
+      const author = authors.find((author) => author.fields.name[CONTENTFUL_LOCALE] === post.author);
+      return author;
     } catch (error) {
       throw Error(`Author not found in Contentful for ${post.slug}: ${error}`);
     }
   };
+  async function handleRelatedTopicsEntry(post, client, observer, topics = []) {
+    const found = topics.find(({ wordpress: { id } }) => id === post.category);
+    if (found) return found.contentful;
+    try {
+      return await client.createEntry(RELATED_TOPICS, {
+        fields: {
+          title: {
+            [CONTENTFUL_LOCALE]: `${found.wordpress.name}`,
+          },
+          id: {
+            [CONTENTFUL_LOCALE]: `${post.slug}`,
+          },
+          topicsList: [
+            {
+              [CONTENTFUL_LOCALE]: {
+                sys: {
+                  type: "Link",
+                  linkType: "Entry",
+                  id: found.contentful.id,
+                },
+              },
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      observer.error(
+        `Related Topic Entry not created for ${post.slug}: ${error}`
+      );
+      throw Error(
+        `Related Topic Entry not created for ${topic.slug}: ${error}`
+      );
+    }
+  }
+
   async function createTopicEntry(post, client, observer, topics = []) {
     const found = topics.find(({ wordpress: { id } }) => id === post.category);
     try {
-      return await client.createEntry("topicPage", {
+      return await client.createEntry(TOPIC_PAGE, {
         fields: {
           title: {
             [CONTENTFUL_LOCALE]: `${found.wordpress.name}`,
@@ -227,7 +268,7 @@ const createPostReferences = async (
       ({ wordpress: { id } }) => id === post.category
     );
     const result = await client.getEntries({
-      content_type: "topicPage",
+      content_type: TOPIC_PAGE,
       "fields.title[match]": foundCategory.wordpress.name,
     });
     if (result.items.length) {
@@ -243,14 +284,14 @@ const createPostReferences = async (
       const [_home, category, _title] = breadcrumbsList;
       const topicPageExactMatch = async () => {
         const result = await client.getEntries({
-          content_type: "topicPage",
+          content_type: TOPIC_PAGE,
           "fields.title[match]": category.name,
         });
         if (result.items.length) return result.items.pop();
       };
       const topicPageContainsMatch = async () => {
         const result = await client.getEntries({
-          content_type: "topicPage",
+          content_type: TOPIC_PAGE,
           "fields.title[contains]": category.name,
         });
         if (result.items.length) return result.items.pop();
@@ -267,7 +308,7 @@ const createPostReferences = async (
       const topicPage = await getTopicPage();
       await delay();
 
-      return client.createEntry("breadcrumbs", {
+      return client.createEntry(BREADCRUMBS, {
         fields: {
           title: {
             [CONTENTFUL_LOCALE]: `BC: ${breadcrumbsList
@@ -306,12 +347,9 @@ const createPostReferences = async (
     }
   };
 
-  const handleBreadcrumbEntry = (post, client, breadcrumbsList = []) => {
+  const handleBreadcrumbEntry = (post, client) => {
     try {
       const breadcrumbMetaInfo = getBreadcrumbMetaInfo(post);
-      // const breadcrumbExists = client.getInfo("breadcrumbs", { id: `bc-${post.title}` } )
-      // if (breadcrumbExists) return breadcrumbExists;
-
       const breadcrumbs = createBreadcrumbsEntry(
         post,
         client,
@@ -345,6 +383,13 @@ const createPostReferences = async (
         await delay();
         const author = await createAuthorReference(post, authors);
         await delay();
+        const relatedTopics = await handleRelatedTopicsEntry(
+          post,
+          client,
+          observer,
+          topics
+        );
+        await delay();
         const topicsPage = await handleTopicPageEntry(
           post,
           client,
@@ -361,6 +406,8 @@ const createPostReferences = async (
           summary,
           titleImage,
           author,
+          relatedTopics,
+          topicsPage,
           breadcrumbs
         );
         resolve({
@@ -370,6 +417,8 @@ const createPostReferences = async (
           summary,
           titleImage,
           author,
+          relatedTopics,
+          topicsPage,
           breadcrumbs,
         });
       } catch (error) {

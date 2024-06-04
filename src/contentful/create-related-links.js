@@ -6,6 +6,7 @@ const {
   CATEGORY_DIR_ORIGINALS,
   LINKS_DIR_TRANSFORMED,
   CONTENTFUL_LOCALE,
+  getExistingContentType,
   findByGlob,
 } = require("../util");
 const OUTPUT_DATA_PATH = path.join(LINKS_DIR_TRANSFORMED, "links.json");
@@ -18,7 +19,7 @@ async function findLinkInContentful(client, wpLink, cfLinks) {
     .find(({ url = "" }) => url.includes(wpLink.slug));
 
   if (!found) {
-    const linkEntry = await client.createEntry("link", {
+    const linkEntry = await client.createEntry(LINK_ID, {
       fields: {
         title: {
           [CONTENTFUL_LOCALE]: `${wpLink.name}`,

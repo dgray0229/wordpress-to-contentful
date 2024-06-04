@@ -13,8 +13,10 @@ const uploadAssets = require("./contentful/upload-assets");
 const matchAuthorTypes = require("./contentful/match-author-types");
 const createBlogPosts = require("./contentful/create-blog-posts");
 const createAuthors = require("./contentful/create-authors");
-const createRelatedLinks = require("./contentful/match-related-links");
-const createRelatedTopics = require("./contentful/match-related-topics");
+const createRelatedLinks = require("./contentful/create-related-links");
+const createRelatedTopics = require("./contentful/create-related-topics");
+const createTopicPates = require("./contentful/create-topic-pages");
+const deleteEntries = require("./contentful/delete-entries");
 const createPostReferences = require("./contentful/create-post-references");
 
 const tasks = new Listr([
@@ -78,9 +80,13 @@ const tasks = new Listr([
     title: "Contentful import",
     task: () => {
       return new Listr([
+        // {
+        //   title: "Create Content Management API Client",
+        //   task: () => createClient(),
+        // },
         {
-          title: "Create Content Management API Client",
-          task: () => createClient(),
+          title: "Delete existing entries",
+          task: () => createClient().then(deleteEntries),
         },
         {
           title: "Upload Assets",

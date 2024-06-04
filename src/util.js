@@ -26,24 +26,29 @@ const {
   CONTENTFUL_SPACE_ID,
   CONTENTFUL_ENV_NAME,
   CONTENTFUL_LOCALE,
-  CONTENTFUL_FALLBACK_USER_ID
+  CONTENTFUL_FALLBACK_USER_ID,
+  CONTENTFUL_USER_ID,
+  BLOG_PAGE_ENTRY_ID,
+  CTA_BOTTOM_ID,
+  BLOG_LAYOUT_ID,
+  TOPIC_LAYOUT_ID,
 } = process.env;
+const UPLOAD_TIMEOUT = 60000; // 60s
+const ARTICLE_PAGE = "articlePage";
+const AUTHOR = "author";
+const RELATED_TOPICS = "relatedTopics";
+const RICH_TEXT_MARKDOWN = "richTextMarkdown";
+const PUBLISH_DATE = "publishDate";
+const MAIN_TITLE = "mainTitle";
+const SUMMARY = "summary";
+const TITLE_IMAGE = "titleImage";
+const BREADCRUMBS = "breadcrumbs";
 
 // Referencing contentful api entries that are used in the process
-// Create Blog Post 
+// Create Blog Post
 const CONTENT_TYPE = "articlePage"; // ID where posts will be added
 // pre-existing entries that are required by the content type but
-const BLOG_LAYOUT = "2ny5cu75sVPNSFxcrqSBKu"; // test_blog_layout
-const RELATED_TOPICS = [
-  "eXXr1kU06jNXb6bnEDFWL", // Related: Organize Your Way to Tax Day: 5 Steps for Success
-  "2cVdJMe0UNnGj0w639HoKz", // Related: Top 7 Reasons to Switch to TaxAct
-  "23UVJl5HPZgo3OyV4qjGLc", // Related: Family Loans: Does the IRS Care If I Lend My Kids Money?
-  "5KeLjofZT76V9Qco1EztKn", // Related Topics - Topic Page Tax Planning
-  "2quMbyVQuqwmtOy7SXvD2k", // Related: When Does Capital Gains Tax Apply?
-  "tHMoJ0s4kAFtiRfSPlDmx", // Related: Know More About Tax Deductions and Credits
-];
-const CTA_BOTTOM = "2NWQl3OKWyJ6Zbc56AEdFJ"; // id: cta-bottom-articlePage; Title: Ready to get started on your taxes?
-
+const API_DELAY_DUR = 1000;
 
 // Awaitable globs
 const findByGlob = (pattern = "", opts = {}) =>
@@ -55,10 +60,10 @@ const MIME_TYPES = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   png: "image/png",
-  gif: "image/gif"
+  gif: "image/gif",
 };
 
-const urlToMimeType = url => {
+const urlToMimeType = (url) => {
   const type = url
     .split(".")
     .slice(-1)
@@ -66,13 +71,119 @@ const urlToMimeType = url => {
   return MIME_TYPES[type] ? MIME_TYPES[type] : MIME_TYPES["jpg"];
 };
 
-const trimUrlToFilename = url =>
+const trimUrlToFilename = (url) =>
   url
     .split("/")
     .slice(-1)
     .join("");
 
-// exports 
+const delay = (dur = API_DELAY_DUR) =>
+  new Promise((resolve) => setTimeout(resolve, dur));
+
+const deleteExistingContentTypes = async (
+  client,
+  observer = MOCK_OBSERVER,
+  content_type = CONTENT_TYPE,
+  user_id = CONTENTFUL_USER_ID
+) => {
+  let count = 0;
+  let total = Infinity;
+  let skip = 0;
+  const blogEntries = [];
+  observer.next(`Fetching existing ${content_type} entries.`);
+  try {
+    Promise.race([
+      // new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT * 10)),
+      new Promise(async (resolve) => {
+        while (skip < total) {
+          await delay();
+          const response = await client.getEntries({
+            content_type,
+            skip: skip,
+            limit: 1000,
+          });
+          await delay();
+          total = response.total;
+          skip += response.items.length;
+          blogEntries.push(...response.items);
+        }
+      }),
+    ]);
+  } catch (error) {
+    const message = `Error in getting existing ${content_type}: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+  try {
+    Promise.race([
+      // new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT * 10)),
+      new Promise(async (resolve) => {
+        await delay();
+        for (const entry of blogEntries) {
+          observer.next(
+            `Resetting ${content_type}. Processing ${count} of ${total} entries.`
+          );
+          ++count;
+          // Remove this line to delete all entries regardless of a filter
+          if (!entry.sys.createdBy.sys.id === user_id) continue;
+
+          if (!entry.sys.publishedVersion) {
+            await entry.delete();
+            await delay();
+          } else {
+            const unpublished = await entry.unpublish();
+            await delay();
+            await unpublished.delete();
+            await delay();
+          }
+        }
+      }),
+    ]);
+  } catch (error) {
+    const message = `Error in deleting ${content_type}: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+};
+
+const getExistingContentType = async (
+  client,
+  observer = MOCK_OBSERVER,
+  content_type = "",
+  options = {},
+  searchParam = "title"
+) => {
+  let count = 0;
+  let total = Infinity;
+  let skip = 0;
+  observer.next(
+    `Getting existing ${content_type}. Grabbing ${count} of ${total} entries.`
+  );
+  try {
+    const results = new Map();
+    while (skip < total) {
+      await delay();
+      const response = await client.getEntries({
+        content_type,
+        skip: skip,
+        limit: 1000,
+        ...options,
+      });
+      total = response.total;
+      response.items.forEach((item, index) => {
+        skip = index + 1;
+        results.set(item.fields[searchParam][CONTENTFUL_LOCALE], item);
+      });
+    }
+    return results;
+  } catch (error) {
+    const message = `Error in getting existing ${content_type}: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+};
+
+// exports
 module.exports = {
   MOCK_OBSERVER,
   BUILD_DIR,
@@ -95,10 +206,24 @@ module.exports = {
   CONTENTFUL_FALLBACK_USER_ID,
   USER_DIR_TRANSFORMED,
   CONTENT_TYPE,
-  BLOG_LAYOUT,
+  CONTENTFUL_USER_ID,
+  BLOG_PAGE_ENTRY_ID,
+  CTA_BOTTOM_ID,
+  BLOG_LAYOUT_ID,
+  TOPIC_LAYOUT_ID,
+  ARTICLE_PAGE,
+  AUTHOR,
   RELATED_TOPICS,
-  CTA_BOTTOM,
+  RICH_TEXT_MARKDOWN,
+  PUBLISH_DATE,
+  MAIN_TITLE,
+  SUMMARY,
+  TITLE_IMAGE,
+  BREADCRUMBS,
   findByGlob,
   urlToMimeType,
-  trimUrlToFilename
+  trimUrlToFilename,
+  delay,
+  deleteExistingContentTypes,
+  getExistingContentType,
 };

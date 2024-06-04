@@ -7,15 +7,14 @@ const {
   CATEGORY_DIR_TRANSFORMED,
   LINKS_DIR_TRANSFORMED,
   CONTENTFUL_LOCALE,
+  TOPIC_LAYOUT_ID,
   findByGlob,
+  delay,
+  getExistingContentType,
 } = require("../util");
 const OUTPUT_DATA_PATH = path.join(CATEGORY_DIR_TRANSFORMED, "topics.json");
 
-const CATEGORY_ID = "relatedTopics";
-const API_DELAY_DUR = 1000;
-
-const delay = (dur = API_DELAY_DUR) =>
-  new Promise((resolve) => setTimeout(resolve, dur));
+const TOPIC_PAGE_ID = "topicsPage";
 
 async function findTopicInContentful(
   client,
@@ -24,18 +23,14 @@ async function findTopicInContentful(
   cfTopics,
   cfLinks
 ) {
-  let found = cfTopics.map(transformCfTopic).find(({ title = "" }) => {
-    return title.includes(wpTopic.name) || null;
-  });
+  let found = cfTopics.find(({ fields: { slug } }) =>
+    slug.includes(`/blog/${wpTopic.slug}`)
+  );
 
   if (!found) {
-    const link = cfLinks.find(({ contentful: cf }) =>
-      cf.url.includes(wpTopic.slug)
-    );
-    found = transformCfTopic(
-      await createTopicEntry(client, observer, wpTopic, link)
-    );
-    // await delay();
+    const link = cfLinks.find(({ fields: { slug } }) => cf.url.includes(slug));
+    found = await createTopicEntry(client, observer, wpTopic, link);
+    await delay();
   }
   return {
     wordpress: {
@@ -49,27 +44,34 @@ async function findTopicInContentful(
 async function createTopicEntry(client, observer, topic, linkEntry) {
   const { id } = linkEntry.contentful;
   try {
-    return await client.createEntry("topicPage", {
+    return await client.createEntry(TOPIC_PAGE_ID, {
       fields: {
-        title: {
+        id: {
           [CONTENTFUL_LOCALE]: `${topic.name}`,
         },
         description: {
-          [CONTENTFUL_LOCALE]: topic.slug,
+          [CONTENTFUL_LOCALE]: `/blog/topic/${topic.slug}`,
         },
         slug: {
           [CONTENTFUL_LOCALE]: `/blog/topic/${topic.slug}`,
         },
-        topicsList: {
-          [CONTENTFUL_LOCALE]: [
-            {
-              sys: {
-                type: "Link",
-                linkType: "Entry",
-                id,
-              },
+        layout: {
+          [CONTENTFUL_LOCALE]: {
+            sys: {
+              type: "Link",
+              linkType: "Entry",
+              id: TOPIC_LAYOUT_ID,
             },
-          ],
+          },
+        },
+        relatedTopics: {
+          [CONTENTFUL_LOCALE]: {
+            sys: {
+              type: "Link",
+              linkType: "Entry",
+              id,
+            },
+          },
         },
       },
     });
@@ -79,13 +81,6 @@ async function createTopicEntry(client, observer, topic, linkEntry) {
     );
     throw Error(`Related Topic Entry not created for ${topic.slug}: ${error}`);
   }
-}
-
-function transformCfTopic(cfTopic) {
-  return {
-    id: cfTopic.sys.id,
-    title: cfTopic.fields.title[CONTENTFUL_LOCALE],
-  };
 }
 
 async function processSavedTopics(client, observer = MOCK_OBSERVER) {
@@ -103,10 +98,11 @@ async function processSavedTopics(client, observer = MOCK_OBSERVER) {
     page.forEach((topic) => topics.push(topic));
   }
 
-  const { items: cfTopics } = await client.getEntries({
-    content_type: CATEGORY_ID,
-    limit: 1000,
-  });
+  const { items: cfTopics } = await getExistingContentType(
+    client,
+    observer,
+    TOPIC_PAGE_ID
+  );
   while (topics.length) {
     const topic = topics.pop();
     const result = await findTopicInContentful(

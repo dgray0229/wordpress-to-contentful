@@ -7,19 +7,34 @@ const {
   USER_DIR_TRANSFORMED,
   USER_DIR_ORIGINALS,
   MOCK_OBSERVER,
+  getExistingContentType,
+  delay,
 } = require("../util");
 const OUTPUT_DATA_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
 const CF_USER_TYPE = "author";
 
 const createAuthorEntry = async (client, author) => {
-  const result = await client.createEntry(CF_USER_TYPE, {
-    fields: {
-      name: {
-        [CONTENTFUL_LOCALE]: author.name,
+  try {
+    const result = await client.createEntry(CF_USER_TYPE, {
+      fields: {
+        name: {
+          [CONTENTFUL_LOCALE]: author.name,
+        },
+        slug: {
+          [CONTENTFUL_LOCALE]: author.slug,
+        },
+        description: {
+          [CONTENTFUL_LOCALE]: author.description,
+        },
+        id: {
+          [CONTENTFUL_LOCALE]: author.id,
+        },
       },
-    },
-  });
-  return result;
+    });
+    return result;
+  } catch (error) {
+    observer.error(error);
+  }
 };
 const createAuthorsInContentful = async (client, author) => {
   let entry = author?.contentful;
@@ -35,20 +50,30 @@ async function processBlogAuthors(client, observer = MOCK_OBSERVER) {
   const files = await findByGlob("*.json", { cwd: USER_DIR_ORIGINALS });
   const queue = [...files];
   let done = [];
-
-  for (const file of queue) {
-    observer.next(`Processing ${file}`);
-    const authors = await fs.readJson(path.join(USER_DIR_ORIGINALS, file));
-    observer.next("Processing authors");
-    for (const author of authors) {
-      const contentfulAuthor = await createAuthorsInContentful(client, author);
-      done.push(contentfulAuthor);
+  const cfUsers = await getExistingContentType(client, observer, CF_USER_TYPE, {}, "name");
+  try {
+    for (const file of queue) {
+      observer.next(`Processing ${file}`);
+      const authors = await fs.readJson(path.join(USER_DIR_ORIGINALS, file));
+      observer.next("Processing authors");
+      for (const author of authors) {
+        let contentfulAuthor = null;
+        if (cfUsers.has(author.name)) {
+          contentfulAuthor = cfUsers.get(author.name);
+        } else {
+          contentfulAuthor = await createAuthorsInContentful(client, author);
+          await delay();
+        }
+        done.push(contentfulAuthor);
+      }
     }
+    observer.next("Processing authors complete. Writing authors to file");
+    await fs.ensureDir(USER_DIR_TRANSFORMED);
+    await fs.writeJson(OUTPUT_DATA_PATH, done, { spaces: 2 });
+  } catch (error) {
+    observer.error(error);
+    throw error;
   }
-  observer.next("Processing authors complete");
-  observer.next("Writing authors to file");
-  await fs.ensureDir(USER_DIR_TRANSFORMED);
-  await fs.writeJson(OUTPUT_DATA_PATH, done, { spaces: 2 });
 }
 module.exports = (client) =>
   new Observable((observer) =>

@@ -7,6 +7,7 @@ const {
   ASSET_DIR_LIST,
   urlToMimeType,
   trimUrlToFilename,
+  delay,
 } = require("../util");
 
 // Do not exceed ten, delay is an important factor too
@@ -14,15 +15,11 @@ const {
 const PROCESSES = 8;
 // add delays to try and avoid API request limits in
 // the parallel processes
-const API_DELAY_DUR = 1000;
 const UPLOAD_TIMEOUT = 60000;
 // out dests
 const DONE_FILE_PATH = path.join(ASSET_DIR_LIST, "done.json");
-const SKIPPED_FILE_PATH = path.join(ASSET_DIR_LIST, "skipped.json");
 const FAILED_FILE_PATH = path.join(ASSET_DIR_LIST, "failed.json");
-
-const delay = (dur = API_DELAY_DUR) =>
-  new Promise((resolve) => setTimeout(resolve, dur));
+const ASSET_ID = "asset";
 
 const uploadAssets = (client, assets, observer = MOCK_OBSERVER) =>
   new Promise(async (complete) => {
@@ -174,7 +171,8 @@ async function getExistingAssets(client) {
     let skip = 0;
     while (skip < total) {
       await delay();
-      const response = await client.getAssets({
+      const response = await client.getEntries({
+        content_type: ASSET_ID,
         skip: skip,
         limit: 1000,
       });
@@ -283,8 +281,7 @@ async function uploadListOfAssets(client, observer) {
   );
   await uploadAssets(client, assets, observer);
   await Promise.all([
-    fs.writeJson(DONE_FILE_PATH, done, { spaces: 2 }),
-    fs.writeJson(SKIPPED_FILE_PATH, skipped, { spaces: 2 }),
+    fs.writeJson(DONE_FILE_PATH, [...done, ...skipped], { spaces: 2 }),
     fs.writeJson(FAILED_FILE_PATH, failed, { spaces: 2 }),
   ]);
 }

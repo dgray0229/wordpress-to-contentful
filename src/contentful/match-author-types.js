@@ -7,6 +7,7 @@ const {
   USER_DIR_TRANSFORMED,
   CONTENTFUL_LOCALE,
   findByGlob,
+  getExistingContentType,
 } = require("../util");
 const OUTPUT_DATA_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
 const CF_USER_TYPE = "author";
@@ -46,9 +47,11 @@ async function processSavedUsers(client, observer = MOCK_OBSERVER) {
     page.forEach((user) => users.push(user));
   }
 
-  const { items: cfUsers } = await client.getEntries({
-    content_type: CF_USER_TYPE,
-  });
+  const { items: cfUsers } = await getExistingContentType(
+    client,
+    observer,
+    CF_USER_TYPE
+  );
 
   while (users.length) {
     const user = users.pop();

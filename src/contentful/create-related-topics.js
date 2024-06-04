@@ -1,213 +1,120 @@
-const path = require("path");
 const fs = require("fs-extra");
+const path = require("path");
 const { Observable } = require("rxjs");
 const {
   MOCK_OBSERVER,
+  CATEGORY_DIR_ORIGINALS,
+  CATEGORY_DIR_TRANSFORMED,
+  LINKS_DIR_TRANSFORMED,
   CONTENTFUL_LOCALE,
-  POST_DIR_TRANSFORMED,
-  POST_DIR_CREATED,
-  ASSET_DIR_LIST,
   findByGlob,
+  delay,
 } = require("../util");
+const OUTPUT_DATA_PATH = path.join(CATEGORY_DIR_TRANSFORMED, "topics.json");
 
-// Do not exceed ten, delay is an important factor too
-// 8 processes and 1s delay seem to make sense, for 10p/s
-const PROCESSES = 8;
-// add delays to try and avoid API request limits in
-// the parallel processes
-const API_DELAY_DUR = 1000;
-const UPLOAD_TIMEOUT = 60000;
+const CATEGORY_ID = "relatedTopics";
 
-const DONE_FILE_PATH = path.join(ASSET_DIR_LIST, "done.json");
-const ASSETS_FILE_PATH = path.join(ASSET_DIR_LIST, "assets.json");
-
-const CATEGORY_FILE_PATH = path.join('dist/categories-original', "categories.json");
-const RESULTS_PATH = path.join(POST_DIR_CREATED, "posts.json");
-const CATEGORY_CONTENT_TYPE = "topicPage";
-const CATEGORY_REFERENCE_CONTENT_TYPE = "relatedTopics";
-const LINK_TYPE = "link";
-const BLOG_URL = "https://taxact.com/blog/category/";
-
-const delay = (dur = API_DELAY_DUR) =>
-  new Promise((resolve) => setTimeout(resolve, dur));
-
-async function getExistingLinks(client) {
-  try {
-    const links = new Map();
-    let total = Infinity;
-    let skip = 0;
-    while (skip < total) {
-      await delay();
-      const response = await client.getEntries({
-        content_type: CATEGORY_CONTENT_TYPE,
-        skip: skip,
-        limit: 1000,
-      });
-      total = response.total;
-      response.items.forEach((link, index) => {
-        skip = index + 1;
-        links.set(link.fields.title[CONTENTFUL_LOCALE], link);
-      });
-    }
-    return links;
-  } catch (error) {
-    throw `Error in getting existing links: ${error}`;
-  }
-
-}
-  async function getExistingTopicPages(client) {
-    try {
-      const links = new Map();
-      let total = Infinity;
-      let skip = 0;
-      while (skip < total) {
-        await delay();
-        const response = await client.getEntries({
-          content_type: LINK_TYPE,
-          skip: skip,
-          limit: 1000,
-        });
-        total = response.total;
-        response.items.forEach((link, index) => {
-          skip = index + 1;
-          links.set(link.fields.title[CONTENTFUL_LOCALE], link);
-        });
-      }
-      return links;
-    } catch (error) {
-      throw `Error in getting existing links: ${error}`;
-    }
-  }
-
-  async function getExistingRelatedTopics(client) {
-    try {
-      const topics = new Map();
-      let total = Infinity;
-      let skip = 0;
-      while (skip < total) {
-        await delay();
-        const response = await client.getEntries({
-          content_type: CATEGORY_REFERENCE_CONTENT_TYPE,
-          skip: skip,
-          limit: 1000,
-        });
-        total = response.total;
-        response.items.forEach((topic, index) => {
-          skip = index + 1;
-          topics.set(topic.fields.title[CONTENTFUL_LOCALE], topic);
-        });
-      }
-      return topics;
-    } catch (error) {
-      throw `Error in getting existing topics: ${error}`;
-    }
-  
-  }
-const createRelatedTopics = async (
-  post,
-  authors,
-  failed,
+async function findTopicInContentful(
   client,
-  observer
-) => {
-  const assets = await fs.readJson(DONE_FILE_PATH);
+  observer,
+  wpTopic,
+  cfTopics,
+  cfLinks
+) {
+  let found = cfTopics.find((cfTopic) => {
+    const title = cfTopic.fields.title[CONTENTFUL_LOCALE];
+    return title.includes(wpTopic.name) || null;
+  });
 
-  const createRelatedTopicEntry = (post, client) => {
-    try {
-      return client.createEntry("relatedTopics", {
-        fields: {
-          title: {
-            [CONTENTFUL_LOCALE]: `Content: ${post.title}`,
-          },
-          topicsList: {
-            [CONTENTFUL_LOCALE]: replaceInlineImageUrls(post.body, inlineMap),
-          },
-        },
-      });
-    } catch (error) {
-      throw Error(`Rich Text Entry not created for ${post.slug}`);
-    }
+  if (!found) {
+    const link = cfLinks.find(({ contentful: cf }) =>
+      cf.url.includes(wpTopic.slug)
+    );
+    found =  await createRelatedTopicEntry(client, observer, wpTopic, link)
+    await delay();
+  }
+  return {
+    wordpress: {
+      id: wpTopic.id,
+      name: wpTopic.name,
+      slug: wpTopic.slug,
+    },
+    contentful: found || null,
   };
-  const exists = await getExistingTopics(client);
-  const relatedTopics = [];
-
 }
-const createLinkEntry = (post, client) => {
+async function createRelatedTopicEntry(client, observer, topic, linkEntry) {
+  const { id } = linkEntry.contentful;
   try {
-    return client.createEntry("link", {
+    return await client.createEntry(CATEGORY_ID, {
       fields: {
         title: {
-          [CONTENTFUL_LOCALE]: `Content: ${post.title}`,
+          [CONTENTFUL_LOCALE]: `${topic.name}`,
         },
         id: {
-          [CONTENTFUL_LOCALE]: post.slug,
+          [CONTENTFUL_LOCALE]: topic.slug,
         },
-        url: {
-          [CONTENTFUL_LOCALE]: `${BLOG_URL}${post.slug}`,
+        topicsList: {
+          [CONTENTFUL_LOCALE]: [
+            {
+              sys: {
+                type: "Link",
+                linkType: "Entry",
+                id,
+              },
+            },
+          ],
         },
       },
     });
   } catch (error) {
-    throw Error(`Rich Text Entry not created for ${post.slug}`);
-  }
-};
-
-const createTopicLinks = async (post, client) => {
-  try {
-    const existingLinks = await getExistingLinks(client);
-    const existingRelatedTopics = await getExistingRelatedTopics(client);
-    const relatedLinks = [];
-    post.topics.forEach(async (topic) => {
-      const found = existingLinks.get(topic);
-      if (found) {
-        relatedLinks.push(found);
-      } else {
-        const relatedTopic = await createTopicLinks(topic, client);
-        relatedLinks.push(relatedTopic);
-      }
-    });
-    return relatedLinks;
-  } catch (error) {
-    throw Error(`Error in creating topic links: ${error}`);
+    observer.error(
+      `Related Topic Entry not created for ${topic.slug}: ${error}`
+    );
+    throw Error(`Related Topic Entry not created for ${topic.slug}: ${error}`);
   }
 }
 
-async function processCategories(client, observer = MOCK_OBSERVER) {
-  const files = await findByGlob("*.json", { cwd: POST_DIR_TRANSFORMED });
-  const authors = await fs.readJson(CATEGORY_FILE_PATH);
-  const queue = [...files].sort((a, b) => b - a);
-  const failed = [];
-  const total = queue.length;
-  const logProgress = () => {
-    const done = total - queue.length - failed.length;
-    observer.next(`Remaining: ${queue.length} out of ${total}. ${done} done. (${failed.length} failed.)`);
-  };
-  try {
-    while (queue.length) {
-      logProgress();
-      const file = queue.pop();
-      const post = await fs.readJson(path.join(POST_DIR_TRANSFORMED, file));
-      const result = await createRelatedTopics(
-        post,
-        authors,
-        failed,
-        client,
-        observer
-      );
+async function processSavedTopics(client, observer = MOCK_OBSERVER) {
+  const cfLinks = await fs.readJSON(
+    path.join(LINKS_DIR_TRANSFORMED, "links.json")
+  );
+  const files = await findByGlob("*.json", { cwd: CATEGORY_DIR_ORIGINALS });
+  const topics = [];
+  const queue = [...files];
+  const output = [];
 
-      await fs.ensureDir(POST_DIR_TRANSFORMED);
-      await fs.writeJson(
-        path.join(POST_DIR_TRANSFORMED, file),
-        { ...post, contentful: result },
-        { spaces: 2 }
-      );
-    }
-  } catch (error) {
-    observer.error(error);
+  while (queue.length) {
+    const file = queue.pop();
+    const page = await fs.readJson(path.join(CATEGORY_DIR_ORIGINALS, file));
+    page.forEach((topic) => topics.push(topic));
   }
+
+  const { items: cfTopics } = await client.getEntries({
+    content_type: CATEGORY_ID,
+    limit: 1000,
+  });
+  while (topics.length) {
+    const topic = topics.pop();
+    const result = await findTopicInContentful(
+      client,
+      observer,
+      topic,
+      cfTopics,
+      cfLinks
+    );
+    output.push(result);
+  }
+
+  await fs.ensureDir(CATEGORY_DIR_TRANSFORMED);
+  await fs.writeJson(OUTPUT_DATA_PATH, output, { spaces: 2 });
 }
 
 module.exports = (client) =>
   new Observable((observer) =>
-    processCategories(client, observer).then(() => observer.complete())
+    processSavedTopics(client, observer).then(() => observer.complete())
   );
+
+// (async () => {
+//   const client = await require("./create-client")();
+//   processSavedTopics(client).then(fin => console.log(fin.length));
+// })();

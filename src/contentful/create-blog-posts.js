@@ -6,13 +6,11 @@ const {
   CONTENTFUL_LOCALE,
   POST_DIR_TRANSFORMED,
   POST_DIR_CREATED,
-  USER_DIR_TRANSFORMED,
-  CONTENTFUL_FALLBACK_USER_ID,
-  BLOG_LAYOUT,
-  RELATED_TOPICS,
-  CTA_BOTTOM,
-  ASSET_DIR_LIST,
+  BLOG_LAYOUT_ID,
+  CTA_BOTTOM_ID,
+  ARTICLE_PAGE,
   findByGlob,
+  delay,
 } = require("../util");
 
 // Do not exceed ten, delay is an important factor too
@@ -20,16 +18,10 @@ const {
 const PROCESSES = 8;
 // add delays to try and avoid API request limits in
 // the parallel processes
-const API_DELAY_DUR = 1000;
 const UPLOAD_TIMEOUT = 60000;
 
 const DONE_FILE_PATH = path.join(POST_DIR_CREATED, "done.json");
 const FAILED_FILE_PATH = path.join(POST_DIR_CREATED, "failed.json");
-const SKIPPED_FILE_PATH = path.join(POST_DIR_CREATED, "skipped.json");
-
-const CONTENT_TYPE = "articlePage";
-const delay = (dur = API_DELAY_DUR) =>
-  new Promise((resolve) => setTimeout(resolve, dur));
 
 const createBlogPosts = (posts, client, observer) => {
   return new Promise((complete) => {
@@ -54,58 +46,62 @@ const createBlogPosts = (posts, client, observer) => {
       processing.add(identifier);
       logProgress();
 
-      return (
-        Promise.race([
-          new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
-          new Promise(async (resolve, _reject) => {
+      return Promise.race([
+        new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
+        new Promise(async (resolve, reject) => {
+          try {
             await delay();
-
             const exists = await client.getEntries({
-              content_type: CONTENT_TYPE,
-              "fields.slug[in]": post.slug,
+              content_type: ARTICLE_PAGE,
+              "fields.slug[match]": post.slug,
             });
-            if (exists && exists.total > 0) {
-              return resolve({ skipped: true, post: exists });
-            }
             await delay();
-            const referenceFields = transform(post);
+            let cfEntry = { fields: {} };
+            let cfData = {};
+            let result;
 
-            const created = await client.createEntry(
-              CONTENT_TYPE,
-              referenceFields
-            );
-            await delay();
-            const published = await created.publish();
-            await delay();
-            resolve(published);
-          }),
-        ])
-
-          // happy path
-          .then((published) => {
-            if (published.skipped) return skipped.push(post);
-            return done.push(post);
-          })
-          // badness
-          .catch((error) => {
-            // TODO: retry failed
-            failed.push({ post, error });
-          })
-          // either
-          .finally(() => {
-            processing.delete(identifier);
-            logProgress();
-            // more in queue case
-            if (queue.length) {
-              const post = queue.pop();
-              createBlogPost(post);
+            if (exists.total > 0) {
+              cfEntry = exists.items[0];
+              cfEntry.fields = cfData.fields;
             }
-            // no more in queue, but at lesat one parallel
-            // process is in progress
-            else if (processing.size) return;
-            else complete({ done, failed, skipped });
-          })
-      );
+            cfData = handleContentfulBlogEntry(post, cfEntry);
+            if (exists.total > 0 && Object.hasOwn(cfEntry, "update")) {
+              result = await cfEntry.update();
+              await delay();
+            } else {
+              const created = await client.createEntry(ARTICLE_PAGE, cfData);
+              await delay();
+              result = await created.publish();
+              await delay();
+            }
+            resolve(result);
+          } catch (error) {
+            const message = `Error with post ${identifier}. ${error}`;
+            observer.error(message);
+            reject(message);
+          }
+        }),
+      ])
+        .then((published) => {
+          if (published.skipped) return skipped.push(post);
+          return done.push(post);
+        })
+        .catch((error) => {
+          failed.push({ post, error });
+        })
+        .finally(() => {
+          processing.delete(identifier);
+          logProgress();
+          // more in queue case
+          if (queue.length) {
+            const post = queue.pop();
+            createBlogPost(post);
+          }
+          // no more in queue, but at lesat one parallel
+          // process is in progress
+          else if (processing.size) return;
+          else complete({ done, failed, skipped });
+        });
     };
     // safely handle cases where there are less total
     // items than the amount of parallel processes
@@ -117,73 +113,246 @@ const createBlogPosts = (posts, client, observer) => {
     }
   });
 };
-
-function transform(post) {
-  const postFields = {
-    fields: {
-      title: {
+function handleContentfulBlogEntry(post, entry = { fields: {} }) {
+  try {
+    if (post.title) {
+      entry.fields.title = {
         [CONTENTFUL_LOCALE]: post.title,
-      },
-      slug: {
-        [CONTENTFUL_LOCALE]: post.slug,
-      },
-      layout: {
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+  try {
+    if (post.slug) {
+      entry.fields.slug = {
+        [CONTENTFUL_LOCALE]: post.slug.includes("/blog/")
+          ? post.slug
+          : `/blog/${post.slug}`,
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+  try {
+    if (post.contentful.content) {
+      entry.fields.content = {
         [CONTENTFUL_LOCALE]: {
           sys: {
             type: "Link",
             linkType: "Entry",
-            id: BLOG_LAYOUT,
-          },
-        },
-      },
-      relatedTopics: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id:
-              RELATED_TOPICS[Math.floor(Math.random() * RELATED_TOPICS.length)],
-          },
-        },
-      },
-      relatedTopicsBottom: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id:
-              RELATED_TOPICS[Math.floor(Math.random() * RELATED_TOPICS.length)],
-          },
-        },
-      },
-      ctaBottom: {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: CTA_BOTTOM,
-          },
-        },
-      },
-    },
-  };
-
-  for (const property in post.contentful) {
-    const value = post.contentful[property];
-    const entryID = post.contentful[property]?.sys?.id;
-    if (value && entryID) {
-      postFields.fields[property] = {
-        [CONTENTFUL_LOCALE]: {
-          sys: {
-            type: "Link",
-            linkType: "Entry",
-            id: entryID,
+            id: post.contentful.content.sys.id,
           },
         },
       };
     }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
   }
-  return postFields;
+
+  try {
+    if (!entry.fields.modules) {
+      entry.fields.modules = {
+        [CONTENTFUL_LOCALE]: [
+          {
+            sys: {
+              type: "Link",
+              linkType: "Entry",
+              id: post.contentful.content.sys.id,
+            },
+          },
+        ],
+      };
+    } else {
+      entry.fields.modules[CONTENTFUL_LOCALE].push({
+        sys: {
+          type: "Link",
+          linkType: "Entry",
+          id: post.contentful.content.sys.id,
+        },
+      });
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+
+  try {
+    if (post.contentful.publishDate) {
+      entry.fields.publishDate = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: post.contentful.publishDate.sys.id,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+
+  try {
+    if (post.contentful.mainTitle) {
+      entry.fields.mainTitle = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: post.contentful.mainTitle.sys.id,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+
+  try {
+    if (post.contentful.summary) {
+      entry.fields.summary = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: post.contentful.summary.sys.id,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+  try {
+    if (post.contentful.titleImage) {
+      entry.fields.bannerImage = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: post.contentful.titleImage.sys.id,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+  try {
+    if (post.contentful.author) {
+      entry.fields.author = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: post.contentful.author.sys.id,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+
+  try {
+    if (post.contentful.breadcrumbs) {
+      entry.fields.breadcrumbs = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: post.contentful.breadcrumbs.sys.id,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+  try {
+    if (post.contentful.relatedTopics) {
+      entry.fields.relatedTopics = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: post.contentful.relatedTopics.sys.id,
+          },
+        },
+      };
+      entry.fields.relatedTopicsBottom = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: post.contentful.relatedTopics.sys.id,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+
+  try {
+    if (!entry.fields.ctaBottom) {
+      entry.fields.ctaBottom = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: CTA_BOTTOM_ID,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+
+  try {
+    if (!entry.fields.layout) {
+      entry.fields.layout = {
+        [CONTENTFUL_LOCALE]: {
+          sys: {
+            type: "Link",
+            linkType: "Entry",
+            id: BLOG_LAYOUT_ID,
+          },
+        },
+      };
+    }
+  } catch (error) {
+    const message = `Error in handleContentfulBlogEntry: ${error}`;
+    observer.error(message);
+    throw message;
+  }
+
+  return entry;
 }
 
 async function processBlogPosts(client, observer = MOCK_OBSERVER) {
@@ -195,13 +364,15 @@ async function processBlogPosts(client, observer = MOCK_OBSERVER) {
     const post = await fs.readJson(path.join(POST_DIR_TRANSFORMED, file));
     posts.push(post);
   }
-
-  const {done, failed, skipped} = await createBlogPosts(posts, client, observer);
+  const { done, failed, skipped } = await createBlogPosts(
+    posts,
+    client,
+    observer
+  );
 
   await fs.ensureDir(POST_DIR_CREATED);
-  await fs.writeJson(DONE_FILE_PATH, done, { spaces: 2 });
-  await fs.writeJson(FAILED_FILE_PATH, failed, { spaces: 2 });
-  await fs.writeJson(SKIPPED_FILE_PATH, skipped, { spaces: 2 });
+  await fs.writeJson(DONE_FILE_PATH, { done, skipped }, { spaces: 2 });
+  await fs.writeJson(FAILED_FILE_PATH, { failed }, { spaces: 2 });
 }
 
 module.exports = (client) =>

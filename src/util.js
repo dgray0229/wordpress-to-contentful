@@ -92,53 +92,43 @@ const deleteExistingContentTypes = async (
   const blogEntries = [];
   observer.next(`Fetching existing ${content_type} entries.`);
   try {
-    Promise.race([
-      // new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT * 10)),
-      new Promise(async (resolve) => {
-        while (skip < total) {
-          await delay();
-          const response = await client.getEntries({
-            content_type,
-            skip: skip,
-            limit: 1000,
-          });
-          await delay();
-          total = response.total;
-          skip += response.items.length;
-          blogEntries.push(...response.items);
-        }
-      }),
-    ]);
+    while (skip < total) {
+      await delay();
+      const response = await client.getEntries({
+        content_type,
+        skip: skip,
+        limit: 1000,
+      });
+      await delay();
+      total = response.total;
+      skip += response.items.length;
+      blogEntries.push(...response.items);
+    }
   } catch (error) {
     const message = `Error in getting existing ${content_type}: ${error}`;
     observer.error(message);
     throw message;
   }
   try {
-    Promise.race([
-      // new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT * 10)),
-      new Promise(async (resolve) => {
-        await delay();
-        for (const entry of blogEntries) {
-          observer.next(
-            `Resetting ${content_type}. Processing ${count} of ${total} entries.`
-          );
-          ++count;
-          // Remove this line to delete all entries regardless of a filter
-          if (!entry.sys.createdBy.sys.id === user_id) continue;
+    await delay();
+    for (const entry of blogEntries) {
+      observer.next(
+        `Resetting ${content_type}. Processing ${count} of ${total} entries.`
+      );
+      ++count;
+      // Remove this line to delete all entries regardless of a filter
+      if (!entry.sys.createdBy.sys.id === user_id) continue;
 
-          if (!entry.sys.publishedVersion) {
-            await entry.delete();
-            await delay();
-          } else {
-            const unpublished = await entry.unpublish();
-            await delay();
-            await unpublished.delete();
-            await delay();
-          }
-        }
-      }),
-    ]);
+      if (!entry.sys.publishedVersion) {
+        await entry.delete();
+        await delay();
+      } else {
+        const unpublished = await entry.unpublish();
+        await delay();
+        await unpublished.delete();
+        await delay();
+      }
+    }
   } catch (error) {
     const message = `Error in deleting ${content_type}: ${error}`;
     observer.error(message);

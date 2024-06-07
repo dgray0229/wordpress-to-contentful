@@ -43,6 +43,7 @@ const MAIN_TITLE = "mainTitle";
 const SUMMARY = "summary";
 const TITLE_IMAGE = "titleImage";
 const BREADCRUMBS = "breadcrumbs";
+const TOPIC_PAGE = "topicPage";
 
 // Referencing contentful api entries that are used in the process
 // Create Blog Post
@@ -89,15 +90,15 @@ const deleteExistingContentTypes = async (
   let count = 0;
   let total = Infinity;
   let skip = 0;
+  let limit;
   const blogEntries = [];
   observer.next(`Fetching existing ${content_type} entries.`);
   try {
     while (skip < total) {
-      await delay();
       const response = await client.getEntries({
         content_type,
-        skip: skip,
-        limit: 1000,
+        skip,
+        limit,
       });
       await delay();
       total = response.total;
@@ -141,11 +142,12 @@ const getExistingContentType = async (
   observer = MOCK_OBSERVER,
   content_type = "",
   options = {},
-  searchParam = "title"
+  keyParam = "title"
 ) => {
   let count = 0;
   let total = Infinity;
   let skip = 0;
+  let limit = 1000;
   observer.next(
     `Getting existing ${content_type}. Grabbing ${count} of ${total} entries.`
   );
@@ -155,14 +157,16 @@ const getExistingContentType = async (
       await delay();
       const response = await client.getEntries({
         content_type,
-        skip: skip,
-        limit: 1000,
+        skip,
+        limit,
         ...options,
       });
       total = response.total;
+      if (!response.items.length) return results;
       response.items.forEach((item, index) => {
         skip = index + 1;
-        results.set(item.fields[searchParam][CONTENTFUL_LOCALE], item);
+        const key = item?.fields?.[keyParam]?.[CONTENTFUL_LOCALE]
+        key &&  results.set(key, item);
       });
     }
     return results;
@@ -210,6 +214,7 @@ module.exports = {
   SUMMARY,
   TITLE_IMAGE,
   BREADCRUMBS,
+  TOPIC_PAGE,
   findByGlob,
   urlToMimeType,
   trimUrlToFilename,

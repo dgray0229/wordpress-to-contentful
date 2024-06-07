@@ -5,19 +5,16 @@ const {
   MOCK_OBSERVER,
   USER_DIR_ORIGINALS,
   USER_DIR_TRANSFORMED,
-  CONTENTFUL_LOCALE,
+  AUTHOR,
   findByGlob,
   getExistingContentType,
 } = require("../util");
 const OUTPUT_DATA_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
-const CF_USER_TYPE = "author";
 
 const sanitizeName = (s) => s.toLowerCase().replace(/\ /gi, "");
 
 async function findUserInContentful(wpUser, cfUsers) {
-  const found = cfUsers
-    .map(transformCfUser)
-    .find(({ name = "" }) => sanitizeName(wpUser.name) === sanitizeName(name));
+  const found = cfUsers.has(sanitizeName(wpUser.name)) ? cfUsers.get(sanitizeName(wpUser.name)) : null;
 
   return {
     wordpress: {
@@ -25,13 +22,6 @@ async function findUserInContentful(wpUser, cfUsers) {
       name: wpUser.name,
     },
     contentful: found || null,
-  };
-}
-
-function transformCfUser(cfUser) {
-  return {
-    id: cfUser.sys.id,
-    name: cfUser.fields.name[CONTENTFUL_LOCALE],
   };
 }
 
@@ -47,10 +37,12 @@ async function processSavedUsers(client, observer = MOCK_OBSERVER) {
     page.forEach((user) => users.push(user));
   }
 
-  const { items: cfUsers } = await getExistingContentType(
+  const cfUsers = await getExistingContentType(
     client,
     observer,
-    CF_USER_TYPE
+    AUTHOR,
+    {},
+    "name"
   );
 
   while (users.length) {

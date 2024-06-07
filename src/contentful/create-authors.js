@@ -13,7 +13,7 @@ const {
 const OUTPUT_DATA_PATH = path.join(USER_DIR_TRANSFORMED, "authors.json");
 const CF_USER_TYPE = "author";
 
-const createAuthorEntry = async (client, author) => {
+const createAuthorEntry = async (client, observer, author) => {
   try {
     const result = await client.createEntry(CF_USER_TYPE, {
       fields: {
@@ -23,11 +23,8 @@ const createAuthorEntry = async (client, author) => {
         slug: {
           [CONTENTFUL_LOCALE]: author.slug,
         },
-        description: {
-          [CONTENTFUL_LOCALE]: author.description,
-        },
         id: {
-          [CONTENTFUL_LOCALE]: author.id,
+          [CONTENTFUL_LOCALE]: author.slug,
         },
       },
     });
@@ -36,10 +33,11 @@ const createAuthorEntry = async (client, author) => {
     observer.error(error);
   }
 };
-const createAuthorsInContentful = async (client, author) => {
+const createAuthorsInContentful = async (client, observer, author) => {
   let entry = author?.contentful;
   if (!entry) {
-    entry = await createAuthorEntry(client, author);
+    entry = await createAuthorEntry(client, observer, author);
+    await delay();
   }
   const result = { ...author, contentful: entry };
   return result;
@@ -61,7 +59,7 @@ async function processBlogAuthors(client, observer = MOCK_OBSERVER) {
         if (cfUsers.has(author.name)) {
           contentfulAuthor = cfUsers.get(author.name);
         } else {
-          contentfulAuthor = await createAuthorsInContentful(client, author);
+          contentfulAuthor = await createAuthorsInContentful(client, observer, author);
           await delay();
         }
         done.push(contentfulAuthor);

@@ -47,7 +47,7 @@ const createBlogPosts = (posts, client, observer) => {
       logProgress();
 
       return Promise.race([
-        new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT)),
+        new Promise((_, reject) => setTimeout(reject, UPLOAD_TIMEOUT * 5)),
         new Promise(async (resolve, reject) => {
           try {
             await delay();
@@ -77,7 +77,7 @@ const createBlogPosts = (posts, client, observer) => {
             resolve(result);
           } catch (error) {
             const message = `Error with post ${identifier}. ${error}`;
-            observer.error(message);
+            // observer.error(message);
             reject(message);
           }
         }),
@@ -122,7 +122,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
   try {
@@ -135,7 +135,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
   try {
@@ -152,7 +152,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
 
@@ -180,7 +180,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
 
@@ -198,7 +198,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
 
@@ -216,7 +216,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
 
@@ -234,7 +234,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
   try {
@@ -251,7 +251,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
   try {
@@ -261,14 +261,14 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
           sys: {
             type: "Link",
             linkType: "Entry",
-            id: post.contentful.author.sys.id,
+            id: post.contentful.author.contentful.sys.id,
           },
         },
       };
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
 
@@ -286,7 +286,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
   try {
@@ -312,7 +312,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
 
@@ -330,7 +330,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
 
@@ -348,7 +348,7 @@ function handleContentfulBlogEntry(post, entry = { fields: {} }) {
     }
   } catch (error) {
     const message = `Error in handleContentfulBlogEntry: ${error}`;
-    observer.error(message);
+    // observer.error(message);
     throw message;
   }
 

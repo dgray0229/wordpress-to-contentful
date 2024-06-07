@@ -16,7 +16,7 @@ const {
   SUMMARY,
   TITLE_IMAGE,
   BREADCRUMBS,
-
+  TOPIC_PAGE,
   findByGlob,
   delay,
 } = require("../util");
@@ -185,7 +185,7 @@ const createPostReferences = async (
   };
   const createAuthorReference = (post, authors) => {
     try {
-      const author = authors.find((author) => author.fields.name[CONTENTFUL_LOCALE] === post.author);
+      const author = authors.find((author) => author.id === post.author);
       return author;
     } catch (error) {
       throw Error(`Author not found in Contentful for ${post.slug}: ${error}`);

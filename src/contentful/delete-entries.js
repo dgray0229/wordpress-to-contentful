@@ -29,24 +29,12 @@ async function processEntryRemoval(client, observer = MOCK_OBSERVER) {
   ];
   for (const entry of entriesToRemove) {
     try {
-      return Promise.race([
-        new Promise(async (resolve) => {
-          try {
-            const success = await deleteExistingContentTypes(
-              client,
-              observer,
-              entry,
-              CONTENTFUL_USER_ID
-            );
-            await delay();
-            resolve(success);
-          } catch (error) {
-            const message = `Error in deleting ${entry}: ${error}`;
-            observer.error(message);
-            throw message;
-          }
-        }),
-      ]);
+      await deleteExistingContentTypes(
+        client,
+        observer,
+        entry,
+        CONTENTFUL_USER_ID
+      );
     } catch (error) {
       const message = `Error in deleting ${entry}: ${error}`;
       observer.error(message);
